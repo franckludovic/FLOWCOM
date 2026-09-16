@@ -1,0 +1,47 @@
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { ThemeProvider } from '@/contexts/ThemeContext'
+import { I18nProvider } from '@/contexts/I18nContext'
+import { AuthProvider } from '@/contexts/AuthContext'
+import { CompanyProvider } from '@/contexts/CompanyContext'
+import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
+import { AppShell } from '@/components/layout/AppShell'
+import AuthPage from '@/pages/Auth'
+import WorkspacePage from '@/pages/Workspace'
+import OnboardingPage from '@/pages/Onboarding'
+import MemoryPage from '@/pages/Memory'
+import CalendarPage from '@/pages/Calendar'
+import ContentPage from '@/pages/ContentGenerator'
+import LibraryPage from '@/pages/Library'
+import RoadmapPage from '@/pages/Roadmap'
+import ReportPage from '@/pages/Report'
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <I18nProvider>
+        <BrowserRouter>
+          <AuthProvider>
+            <CompanyProvider>
+              <Routes>
+                <Route path="/auth" element={<AuthPage />} />
+                <Route element={<ProtectedRoute />}>
+                  <Route element={<AppShell />}>
+                    <Route path="/workspace" element={<WorkspacePage />} />
+                    <Route path="/onboarding" element={<OnboardingPage />} />
+                    <Route path="/memory" element={<MemoryPage />} />
+                    <Route path="/calendar" element={<CalendarPage />} />
+                    <Route path="/content" element={<ContentPage />} />
+                    <Route path="/library" element={<LibraryPage />} />
+                    <Route path="/roadmap" element={<RoadmapPage />} />
+                    <Route path="/report" element={<ReportPage />} />
+                  </Route>
+                </Route>
+                <Route path="*" element={<Navigate to="/workspace" replace />} />
+              </Routes>
+            </CompanyProvider>
+          </AuthProvider>
+        </BrowserRouter>
+      </I18nProvider>
+    </ThemeProvider>
+  )
+}
