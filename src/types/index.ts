@@ -21,6 +21,7 @@ export interface Company {
   team_size: string
   location: string
   short_desc: string
+  logo_url?: string
   // Step 2
   mission: string
   vision: string

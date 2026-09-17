@@ -17,6 +17,8 @@ const en: Record<TranslationKey, string> = {
   'nav.roadmapDesc': 'Progress & AI coach',
   'nav.report': 'Weekly Report',
   'nav.reportDesc': 'Analysis & FlowCom score',
+  'nav.profile': 'My Profile',
+  'nav.profileDesc': 'Company settings',
   // Sidebar
   'sidebar.tagline': 'AI Comms for SMEs',
   'sidebar.offlineTitle': 'Secure data',
@@ -172,7 +174,7 @@ const en: Record<TranslationKey, string> = {
   'calendar.title': 'Generate a monthly plan',
   'calendar.subtitle': 'Pick a month, goal, channel and weekly frequency.',
   'calendar.targetMonth': 'Target month',
-  'calendar.primaryGoal': 'Primary goal',
+  'calendar.primaryGoal': 'Goal(s)',
   'calendar.socialNetwork': 'Social network',
   'calendar.weeklyFreq': 'Weekly frequency',
   'calendar.willGenerate': 'Will generate',

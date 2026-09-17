@@ -15,6 +15,8 @@ const fr = {
   'nav.roadmapDesc': 'Progression & coach IA',
   'nav.report': 'Rapport Hebdo',
   'nav.reportDesc': 'Analyse & score FlowCom',
+  'nav.profile': 'Mon Profil',
+  'nav.profileDesc': 'Paramètres de l\'entreprise',
   // Sidebar
   'sidebar.tagline': 'Comms IA pour PME',
   'sidebar.offlineTitle': 'Données locales',
@@ -170,7 +172,7 @@ const fr = {
   'calendar.title': 'Générer un plan mensuel',
   'calendar.subtitle': 'Choisissez un mois, un objectif, un canal et une fréquence.',
   'calendar.targetMonth': 'Mois cible',
-  'calendar.primaryGoal': 'Objectif principal',
+  'calendar.primaryGoal': 'Objectif(s)',
   'calendar.socialNetwork': 'Réseau social',
   'calendar.weeklyFreq': 'Fréquence hebdomadaire',
   'calendar.willGenerate': 'Générera',
