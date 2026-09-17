@@ -33,7 +33,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .select('*')
       .eq('id', userId)
       .single()
-    if (data) setProfile(data as unknown as Profile)
+    if (data) {
+      const profileData = data as unknown as Profile
+      setProfile(profileData)
+      if (profileData.api_key) {
+        localStorage.setItem('flowcom:groq_key', profileData.api_key)
+      } else {
+        localStorage.removeItem('flowcom:groq_key')
+      }
+    }
   }, [])
 
   useEffect(() => {
@@ -93,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut = async () => {
+    localStorage.removeItem('flowcom:groq_key')
     await supabase.auth.signOut()
   }
 
@@ -100,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user) return
     await supabase.from('profiles').update({ api_key: key }).eq('id', user.id)
     setProfile(prev => prev ? { ...prev, api_key: key } : prev)
+    localStorage.setItem('flowcom:groq_key', key)
   }
 
   const updateProfile = async (updates: Partial<Profile>) => {

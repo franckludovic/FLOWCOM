@@ -14,6 +14,7 @@ import ContentPage from '@/pages/ContentGenerator'
 import LibraryPage from '@/pages/Library'
 import RoadmapPage from '@/pages/Roadmap'
 import ReportPage from '@/pages/Report'
+import StudioPage from '@/pages/Studio'
 
 export default function App() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
                     <Route path="/calendar" element={<CalendarPage />} />
                     <Route path="/content" element={<ContentPage />} />
                     <Route path="/library" element={<LibraryPage />} />
+                    <Route path="/studio" element={<StudioPage />} />
                     <Route path="/roadmap" element={<RoadmapPage />} />
                     <Route path="/report" element={<ReportPage />} />
                   </Route>

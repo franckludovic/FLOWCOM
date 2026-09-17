@@ -13,6 +13,8 @@ const en: Record<TranslationKey, string> = {
   'nav.contentDesc': 'Write posts',
   'nav.library': 'Content Library',
   'nav.libraryDesc': 'Saved posts',
+  'nav.studio': 'Buffer Studio',
+  'nav.studioDesc': 'Publish & schedule',
   'nav.roadmap': 'Strategic Roadmap',
   'nav.roadmapDesc': 'Progress & AI coach',
   'nav.report': 'Weekly Report',

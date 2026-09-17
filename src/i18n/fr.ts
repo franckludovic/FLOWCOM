@@ -11,6 +11,8 @@ const fr = {
   'nav.contentDesc': 'Rédiger des posts',
   'nav.library': 'Bibliothèque',
   'nav.libraryDesc': 'Posts enregistrés',
+  'nav.studio': 'Buffer Studio',
+  'nav.studioDesc': 'Publier et programmer',
   'nav.roadmap': 'Feuille de Route',
   'nav.roadmapDesc': 'Progression & coach IA',
   'nav.report': 'Rapport Hebdo',

@@ -13,4 +13,13 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    proxy: {
+      '/buffer-api': {
+        target: 'https://api.buffer.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/buffer-api/, '')
+      }
+    }
+  }
 })

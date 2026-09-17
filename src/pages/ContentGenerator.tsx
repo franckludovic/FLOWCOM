@@ -13,6 +13,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useCompany } from '@/contexts/CompanyContext'
 import { callGroqJSON, buildGroqError } from '@/lib/groq'
 import { cn } from '@/lib/utils'
+import { HfInference } from '@huggingface/inference'
 
 // ─── Types ─────────────────────────────────────────────────────
 interface GeneratedPost {
@@ -154,14 +155,12 @@ export default function ContentGeneratorPage() {
     const fetchImage = async () => {
       setGeneratingImage(true)
       try {
-        const res = await fetch('https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${hfToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ inputs: post.visualIdea })
+        const hf = new HfInference(hfToken)
+        const blob = await hf.textToImage({
+          model: 'black-forest-labs/FLUX.1-schnell',
+          inputs: post.visualIdea
         })
-        if (!res.ok) throw new Error('HF API Error')
-        const blob = await res.blob()
-        if (active) setHfImageUrl(URL.createObjectURL(blob))
+        if (active) setHfImageUrl(typeof blob === 'string' ? blob : URL.createObjectURL(blob as unknown as Blob))
       } catch (err) {
         console.error("HF fetch failed", err)
         if (active) setHfImageUrl('') 
@@ -262,6 +261,7 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
     }
     const existing = JSON.parse(localStorage.getItem('flowcom:library') || '[]')
     localStorage.setItem('flowcom:library', JSON.stringify([draft, ...existing]))
+    window.dispatchEvent(new Event('flowcom:data-updated'))
     setSaved(true); setTimeout(() => setSaved(false), 3000)
   }
 

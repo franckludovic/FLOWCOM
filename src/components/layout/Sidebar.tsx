@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, UserCircle, Brain, CalendarDays,
   FileText, BookOpen, Map, BarChart2, Zap,
-  ChevronLeft, ChevronRight, Building2, X
+  ChevronLeft, ChevronRight, Building2, X, Send
 } from 'lucide-react'
 import { useI18n } from '@/contexts/I18nContext'
 import { useCompany } from '@/contexts/CompanyContext'
@@ -17,6 +17,7 @@ const navItems = [
   { to: '/calendar',    icon: CalendarDays,    labelKey: 'nav.calendar' },
   { to: '/content',     icon: FileText,        labelKey: 'nav.content' },
   { to: '/library',     icon: BookOpen,        labelKey: 'nav.library' },
+  { to: '/studio',      icon: Send,            labelKey: 'nav.studio' },
   { to: '/roadmap',     icon: Map,             labelKey: 'nav.roadmap' },
   { to: '/report',      icon: BarChart2,       labelKey: 'nav.report' },
 ] as const
