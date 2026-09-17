@@ -155,6 +155,7 @@ export default function MemoryPage() {
   const [newMessage, setNewMessage]   = useState('')
   const [copied, setCopied]           = useState(false)
 
+
   const systemPrompt = useMemo(() =>
     buildSystemPrompt(activeCompany ? { ...activeCompany, ...form } : null, products, segments, keyMessages),
     [activeCompany, form, products, segments, keyMessages]
@@ -394,7 +395,7 @@ export default function MemoryPage() {
 
         </div>{/* end left col */}
 
-        {/* RIGHT col — sticky AI Prompt Preview */}
+        {/* RIGHT col — prompt preview and published history */}
         <div className="hidden lg:flex w-80 xl:w-96 shrink-0 flex-col gap-3">
           <div className="flex-1 bg-gradient-to-br from-indigo-950 to-violet-950 rounded-2xl border border-indigo-800 overflow-hidden flex flex-col">
             {/* Panel header */}

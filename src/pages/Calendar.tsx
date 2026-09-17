@@ -9,10 +9,12 @@ import {
   FaYoutube, FaXTwitter, FaWhatsapp, FaEnvelope, FaWordpress, FaPodcast,
 } from 'react-icons/fa6'
 import { useI18n } from '@/contexts/I18nContext'
-import { useAuth } from '@/contexts/AuthContext'
 import { useCompany } from '@/contexts/CompanyContext'
 import { callGroqJSON, buildGroqError } from '@/lib/groq'
+import { buildAiContext } from '@/lib/aiContext'
 import { cn } from '@/lib/utils'
+import { supabase } from '@/lib/supabase'
+import { mapCalendarRow } from '@/lib/dataMappers'
 
 // ─── Types ─────────────────────────────────────────────────────
 interface CalendarItem {
@@ -140,7 +142,6 @@ function SkeletonTable({ count = 8, lang }: { count?: number; lang: 'fr' | 'en' 
 // ─── Page ──────────────────────────────────────────────────────
 export default function CalendarPage() {
   const { t, lang } = useI18n()
-  const { profile } = useAuth()
   const { activeCompany, products, segments, keyMessages } = useCompany()
   const navigate = useNavigate()
 
@@ -157,18 +158,30 @@ export default function CalendarPage() {
 
   const [view, setView]       = useState<'list' | 'grid'>('list')
   const [items, setItems]     = useState<CalendarItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('flowcom:calendar_items')
-      return saved ? JSON.parse(saved) : []
-    } catch { return [] }
+    return []
   })
   const [loading, setLoading] = useState(false)
+  const [loadingItems, setLoadingItems] = useState(true)
   const [error, setError]     = useState('')
 
-  // Persist items
   useEffect(() => {
-    localStorage.setItem('flowcom:calendar_items', JSON.stringify(items))
-  }, [items])
+    let cancelled = false
+    const loadItems = async () => {
+      if (!activeCompany) { setItems([]); setLoadingItems(false); return }
+      setLoadingItems(true)
+      const { data } = await supabase
+        .from('calendar_items')
+        .select('*')
+        .eq('company_id', activeCompany.id)
+        .order('post_date')
+      if (!cancelled) {
+        setItems((data ?? []).map(mapCalendarRow))
+        setLoadingItems(false)
+      }
+    }
+    loadItems()
+    return () => { cancelled = true }
+  }, [activeCompany?.id])
 
   const mk           = monthKey(year, month)
   const monthItems   = useMemo(() => items.filter(i => i.date.startsWith(mk)), [items, mk])
@@ -186,18 +199,10 @@ export default function CalendarPage() {
   const nextMonth = () => { if (month === 11) { setYear(y => y + 1); setMonth(0) } else setMonth(m => m + 1) }
 
   const buildContext = () => {
-    const lines = [`Company: ${activeCompany?.name}`]
-    if (activeCompany?.industry)  lines.push(`Industry: ${activeCompany.industry}`)
-    if (activeCompany?.short_desc) lines.push(`Description: ${activeCompany.short_desc}`)
-    if (activeCompany?.tone)      lines.push(`Tone: ${activeCompany.tone}`)
-    if (products.length)          lines.push(`Products: ${products.map(p => p.name).join(', ')}`)
-    if (segments.length)          lines.push(`Audience: ${segments.map(s => s.name).join(', ')}`)
-    if (keyMessages.length)       lines.push(`Guidelines: ${keyMessages.map(m => m.content).join(' | ')}`)
-    return lines.join('\n')
+    return buildAiContext({ company: activeCompany, products, segments, keyMessages })
   }
 
   const handleGenerate = async () => {
-    if (!profile?.api_key) { setError(t('calendar.errorNoKey')); return }
     if (!activeCompany)    { setError(lang === 'fr' ? 'Aucune entreprise active.' : 'No active company.'); return }
     setLoading(true); setError('')
 
@@ -220,10 +225,10 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
 
     try {
       type APIResponse = { items: Array<{ date: string; topic: string; goal: string; format: string; channel: string }> }
-      const res = await callGroqJSON<APIResponse>(profile.api_key, [
+      const res = await callGroqJSON<APIResponse>('', [
         { role: 'system', content: systemMsg },
         { role: 'user',   content: userMsg },
-      ], { temperature: 0.8, max_tokens: 3000 })
+      ], { temperature: 0.8, max_tokens: 3000, requiredKeys: ['items'] })
 
       const newItems: CalendarItem[] = (res.items ?? []).map((item, i) => ({
         id: `${mk}-${i}-${Date.now()}`,
@@ -235,7 +240,18 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
         channel: channels.includes(item.channel?.toLowerCase()) ? item.channel.toLowerCase() : channels[0],
         status: 'idea',
       }))
-      setItems(prev => [...prev.filter(i => !i.date.startsWith(mk)), ...newItems])
+      await supabase.from('calendar_items').delete().eq('company_id', activeCompany.id).eq('month', mk)
+      const { data: savedItems } = await supabase.from('calendar_items').insert(newItems.map(item => ({
+        company_id: activeCompany.id,
+        month: mk,
+        post_date: item.date,
+        topic: item.topic,
+        goal: item.goal,
+        format: item.format,
+        channel: item.channel,
+        status: item.status,
+      }))).select('*')
+      setItems(prev => [...prev.filter(i => !i.date.startsWith(mk)), ...(savedItems ?? []).map(mapCalendarRow)])
     } catch (e) {
       setError(t(buildGroqError(e) as Parameters<typeof t>[0]))
     } finally {
@@ -243,10 +259,24 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
     }
   }
 
-  const clearMonth  = () => setItems(prev => prev.filter(i => !i.date.startsWith(mk)))
-  const cycleStatus = (id: string) => setItems(prev => prev.map(i => i.id === id ? { ...i, status: STATUS_CYCLE[i.status] } : i))
-  const removeItem  = (id: string) => setItems(prev => prev.filter(i => i.id !== id))
-  const updateItem  = (id: string, field: keyof CalendarItem, value: string) => {
+  const clearMonth  = async () => {
+    if (!activeCompany) return
+    await supabase.from('calendar_items').delete().eq('company_id', activeCompany.id).eq('month', mk)
+    setItems(prev => prev.filter(i => !i.date.startsWith(mk)))
+  }
+  const cycleStatus = async (id: string) => {
+    const item = items.find(i => i.id === id)
+    if (!item) return
+    const status = STATUS_CYCLE[item.status]
+    await supabase.from('calendar_items').update({ status }).eq('id', id)
+    setItems(prev => prev.map(i => i.id === id ? { ...i, status } : i))
+  }
+  const removeItem  = async (id: string) => {
+    await supabase.from('calendar_items').delete().eq('id', id)
+    setItems(prev => prev.filter(i => i.id !== id))
+  }
+  const updateItem  = async (id: string, field: keyof CalendarItem, value: string) => {
+    await supabase.from('calendar_items').update({ [field === 'date' ? 'post_date' : field]: value }).eq('id', id)
     setItems(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i))
   }
   const goGenerate  = (item: CalendarItem) => {
@@ -498,7 +528,7 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
       <div className="pb-4">
 
         {/* Skeleton while loading */}
-        {loading && <SkeletonTable count={totalPosts > 10 ? 10 : totalPosts} lang={lang} />}
+        {(loading || loadingItems) && <SkeletonTable count={totalPosts > 10 ? 10 : totalPosts} lang={lang} />}
 
         {/* Empty state */}
         {!loading && monthItems.length === 0 && (

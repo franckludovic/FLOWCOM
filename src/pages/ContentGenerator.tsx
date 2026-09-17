@@ -9,9 +9,11 @@ import {
   FaYoutube, FaXTwitter, FaWhatsapp, FaEnvelope, FaWordpress, FaPodcast,
 } from 'react-icons/fa6'
 import { useI18n } from '@/contexts/I18nContext'
-import { useAuth } from '@/contexts/AuthContext'
 import { useCompany } from '@/contexts/CompanyContext'
 import { callGroqJSON, buildGroqError } from '@/lib/groq'
+import { buildAiContext } from '@/lib/aiContext'
+import { supabase } from '@/lib/supabase'
+import { toLibraryInsert } from '@/lib/dataMappers'
 import { cn } from '@/lib/utils'
 import { HfInference } from '@huggingface/inference'
 
@@ -112,7 +114,6 @@ function SectionCard({ icon: Icon, iconColor, label, content, editable, onChange
 // ─── Main Page ─────────────────────────────────────────────────
 export default function ContentGeneratorPage() {
   const { t, lang } = useI18n()
-  const { profile } = useAuth()
   const { activeCompany, products, segments, keyMessages } = useCompany()
   const [searchParams] = useSearchParams()
 
@@ -192,20 +193,10 @@ export default function ContentGeneratorPage() {
   }, [searchParams])
 
   const buildContext = useCallback(() => {
-    const lines: string[] = []
-    if (activeCompany?.name)       lines.push(`Company: ${activeCompany.name}`)
-    if (activeCompany?.industry)   lines.push(`Industry: ${activeCompany.industry}`)
-    if (activeCompany?.short_desc) lines.push(`What we do: ${activeCompany.short_desc}`)
-    if (activeCompany?.mission)    lines.push(`Mission: ${activeCompany.mission}`)
-    if (activeCompany?.tone)       lines.push(`Tone of voice: ${activeCompany.tone}`)
-    if (products.length)           lines.push(`Products: ${products.map(p => `${p.name} - ${p.description}`).join(' | ')}`)
-    if (segments.length)           lines.push(`Audience: ${segments.map(s => s.name).join(', ')}`)
-    if (keyMessages.length)        lines.push(`Brand guidelines: ${keyMessages.map(m => m.content).join(' | ')}`)
-    return lines.join('\n')
+    return buildAiContext({ company: activeCompany, products, segments, keyMessages })
   }, [activeCompany, products, segments, keyMessages])
 
   const handleGenerate = async () => {
-    if (!profile?.api_key) { setError(t('content.errorNoKey')); return }
     if (!topic.trim())     { setError(t('content.errorNoTopic')); return }
     setLoading(true); setError(''); setPost(null); setEditable(false); setSaved(false)
 
@@ -240,27 +231,34 @@ ${formatInstructions}
 Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
 
     try {
-      const generated = await callGroqJSON<GeneratedPost>(profile.api_key, [{ role: 'system', content: sys }, { role: 'user', content: usr }], { temperature: 0.8, max_tokens: 3000 })
+      const generated = await callGroqJSON<GeneratedPost>('', [{ role: 'system', content: sys }, { role: 'user', content: usr }], { temperature: 0.8, max_tokens: 3000, requiredKeys: ['content', 'visualIdea'] })
       setImageSeed(Date.now())
       setPost(generated)
     } catch (e) { setError(t(buildGroqError(e) as Parameters<typeof t>[0])) }
     setLoading(false)
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!post) return
-    const draft = {
-      id: `draft-${Date.now()}`, title: topic,
+    if (!activeCompany) {
+      setError(lang === 'fr' ? 'Aucune entreprise active.' : 'No active company.')
+      return
+    }
+    const draft = toLibraryInsert({
+      title: topic,
       hook: post.content.split('\n')[0] ?? '',
-      episodeContext: '', body: post.content,
+      episode_context: '', body: post.content,
       conclusion: '', reward: '', cta: '',
       hashtags: '', visual_idea: post.visualIdea ?? '',
       video_script: contentType === 'Video' ? post.content : '',
       channel, format: contentType.toLowerCase(),
-      tone, status: 'Draft', created_at: new Date().toISOString(),
+      tone, status: 'Draft', publish_date: null,
+    }, activeCompany.id)
+    const { error } = await supabase.from('library_items').insert(draft)
+    if (error) {
+      setError(buildGroqError(error))
+      return
     }
-    const existing = JSON.parse(localStorage.getItem('flowcom:library') || '[]')
-    localStorage.setItem('flowcom:library', JSON.stringify([draft, ...existing]))
     window.dispatchEvent(new Event('flowcom:data-updated'))
     setSaved(true); setTimeout(() => setSaved(false), 3000)
   }

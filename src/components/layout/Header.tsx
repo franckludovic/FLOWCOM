@@ -15,7 +15,7 @@ interface HeaderProps {
 export default function Header({ onToggleMobileMenu }: HeaderProps) {
   const { t, lang, toggle: toggleLang } = useI18n()
   const { theme, toggle: toggleTheme } = useTheme()
-  const { profile, signOut, updateApiKey } = useAuth()
+  const { profile, apiKeyConfigured, signOut, updateApiKey } = useAuth()
   const { companies, activeCompany, setActiveCompany, createCompany } = useCompany()
 
   const [companyMenuOpen, setCompanyMenuOpen] = useState(false)
@@ -25,7 +25,7 @@ export default function Header({ onToggleMobileMenu }: HeaderProps) {
   const [newCompanyName, setNewCompanyName] = useState('')
   const [creatingCompany, setCreatingCompany] = useState(false)
 
-  const hasApiKey = !!profile?.api_key
+  const hasApiKey = apiKeyConfigured
 
   const handleCreateCompany = async () => {
     if (!newCompanyName.trim()) return
@@ -139,7 +139,7 @@ export default function Header({ onToggleMobileMenu }: HeaderProps) {
         {/* API Key button */}
         <button
           onClick={() => {
-            setInputKey(profile?.api_key || '')
+            setInputKey('')
             setApiKeyOpen(true)
           }}
           className={cn(

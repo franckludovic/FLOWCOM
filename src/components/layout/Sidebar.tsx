@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, UserCircle, Brain, CalendarDays,
-  FileText, BookOpen, Map, BarChart2, Zap,
+  FileText, BookOpen, Map, BarChart2, Zap, History,
   ChevronLeft, ChevronRight, Building2, X, Send
 } from 'lucide-react'
 import { useI18n } from '@/contexts/I18nContext'
@@ -13,13 +13,13 @@ const SIDEBAR_STORAGE_KEY = 'flowcom:sidebar_collapsed'
 
 const navItems = [
   { to: '/workspace',   icon: LayoutDashboard, labelKey: 'nav.workspace' },
-  { to: '/memory',      icon: Brain,           labelKey: 'nav.memory' },
   { to: '/calendar',    icon: CalendarDays,    labelKey: 'nav.calendar' },
   { to: '/content',     icon: FileText,        labelKey: 'nav.content' },
   { to: '/library',     icon: BookOpen,        labelKey: 'nav.library' },
   { to: '/studio',      icon: Send,            labelKey: 'nav.studio' },
   { to: '/roadmap',     icon: Map,             labelKey: 'nav.roadmap' },
   { to: '/report',      icon: BarChart2,       labelKey: 'nav.report' },
+  { to: '/publishing-history', icon: History,   labelKey: 'nav.publishingHistory' },
 ] as const
 
 interface SidebarProps {
@@ -135,8 +135,24 @@ export default function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
           )
         })}
 
-        {/* Divider + Profile link */}
+        {/* Divider + utility links */}
         <div className="pt-2 mt-2 border-t border-[var(--color-border)]">
+          <div className={cn('grid gap-1', !isMobileView && !collapsed ? 'grid-cols-2' : 'grid-cols-1')}>
+          <NavLink
+            to="/memory"
+            onClick={() => isMobileView && onCloseMobile()}
+            title={!isMobileView && collapsed ? t('nav.memory') : undefined}
+            className={({ isActive }) => cn(
+              'flex items-center rounded-xl text-sm font-medium transition-colors',
+              !isMobileView && collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5',
+              isActive
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text)]'
+            )}
+          >
+            <Brain className="w-4 h-4 shrink-0" />
+            {(isMobileView || !collapsed) && <span className="truncate">{t('nav.memory')}</span>}
+          </NavLink>
           <NavLink
             to="/onboarding"
             onClick={() => isMobileView && onCloseMobile()}
@@ -152,6 +168,7 @@ export default function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
             <UserCircle className="w-4 h-4 shrink-0" />
             {(isMobileView || !collapsed) && <span className="truncate">{t('nav.profile')}</span>}
           </NavLink>
+          </div>
         </div>
       </nav>
 

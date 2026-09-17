@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Check, Plus, Trash2, Zap, Minus } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, ArrowRight, Check, Plus, Trash2, Minus } from 'lucide-react'
 import {
   FaLinkedinIn,
   FaInstagram,
@@ -15,6 +15,8 @@ import {
 } from 'react-icons/fa6'
 import { useI18n } from '@/contexts/I18nContext'
 import { useCompany } from '@/contexts/CompanyContext'
+import { useAuth } from '@/contexts/AuthContext'
+import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Product, AudienceSegment } from '@/types'
 
@@ -405,17 +407,105 @@ function StepComms({ data, onChange }: { data: StepCommsData; onChange: (d: Step
 export default function OnboardingPage() {
   const { t } = useI18n()
   const navigate = useNavigate()
-  const { createCompany, updateCompany, setActiveCompany, addProduct, addSegment } = useCompany()
+  const [searchParams] = useSearchParams()
+  const { user } = useAuth()
+  const { activeCompany, createCompany, updateCompany, setActiveCompany, saveProducts, saveSegments } = useCompany()
 
-  // Load draft from localStorage on mount
-  const draft = loadDraft()
-  const [step, setStep] = useState(draft?.step ?? 1)
+  const initialDraft = loadDraft()
+  const requestedStep = Number(searchParams.get('step'))
+  const initialStep = Number.isInteger(requestedStep) && requestedStep >= 1 && requestedStep <= TOTAL_STEPS
+    ? requestedStep
+    : initialDraft?.step ?? 1
+  const [step, setStep] = useState(initialStep)
   const [saving, setSaving] = useState(false)
-  const [general, setGeneral] = useState<StepGeneralData>(draft?.general ?? defaultGeneral)
-  const [brand, setBrand] = useState<StepBrandData>(draft?.brand ?? defaultBrand)
-  const [productsData, setProductsData] = useState<StepProductsData>(draft?.productsData ?? defaultProducts)
-  const [audienceData, setAudienceData] = useState<StepAudienceData>(draft?.audienceData ?? defaultAudience)
-  const [comms, setComms] = useState<StepCommsData>(draft?.comms ?? defaultComms)
+  const [general, setGeneral] = useState<StepGeneralData>(initialDraft?.general ?? defaultGeneral)
+  const [brand, setBrand] = useState<StepBrandData>(initialDraft?.brand ?? defaultBrand)
+  const [productsData, setProductsData] = useState<StepProductsData>(initialDraft?.productsData ?? defaultProducts)
+  const [audienceData, setAudienceData] = useState<StepAudienceData>(initialDraft?.audienceData ?? defaultAudience)
+  const [comms, setComms] = useState<StepCommsData>(initialDraft?.comms ?? defaultComms)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const hydrateFromCompany = async () => {
+      let company = activeCompany
+      if (!company && user) {
+        const { data } = await supabase
+          .from('companies')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at')
+          .limit(1)
+          .maybeSingle()
+        company = data as typeof activeCompany
+      }
+      if (!company || cancelled) return
+
+      const nextGeneral = {
+        name: company.name ?? '',
+        industry: company.industry ?? '',
+        website: company.website ?? '',
+        founded_year: company.founded_year ?? '',
+        team_size: company.team_size ?? '1',
+        location: company.location ?? '',
+        short_desc: company.short_desc ?? '',
+      }
+      const nextBrand = {
+        mission: company.mission ?? '',
+        vision: company.vision ?? '',
+        values: company.values ?? '',
+      }
+      const nextComms = {
+        tone: company.tone ?? '',
+        targets: company.targets ?? '',
+        channels: company.channels ?? '',
+        frequency: company.frequency ?? '3x per week',
+      }
+      const keepDraftValue = (savedValue: string, draftValue: string) =>
+        draftValue.trim() ? draftValue : savedValue
+      const hydratedGeneral = Object.fromEntries(
+        Object.entries(nextGeneral).map(([key, value]) => [key, keepDraftValue(value, general[key as keyof StepGeneralData])])
+      ) as unknown as StepGeneralData
+      const hydratedBrand = Object.fromEntries(
+        Object.entries(nextBrand).map(([key, value]) => [key, keepDraftValue(value, brand[key as keyof StepBrandData])])
+      ) as unknown as StepBrandData
+      const hydratedComms = Object.fromEntries(
+        Object.entries(nextComms).map(([key, value]) => [key, keepDraftValue(value, comms[key as keyof StepCommsData])])
+      ) as unknown as StepCommsData
+
+      setGeneral(hydratedGeneral)
+      setBrand(hydratedBrand)
+      setComms(hydratedComms)
+
+      const [{ data: products }, { data: segments }] = await Promise.all([
+        supabase.from('products').select('*').eq('company_id', company.id),
+        supabase.from('audience_segments').select('*').eq('company_id', company.id),
+      ])
+      if (cancelled) return
+
+      const hydratedProducts = products?.length
+        ? { products: products.map(product => ({ name: product.name, description: product.description })) }
+        : productsData
+      const hydratedAudience = segments?.length
+        ? { segments: segments.map(segment => ({ name: segment.name, pain_points: segment.pain_points, interests: segment.interests })) }
+        : audienceData
+      setProductsData(hydratedProducts)
+      setAudienceData(hydratedAudience)
+
+      const nextDraft: DraftState = {
+        step,
+        general: hydratedGeneral,
+        brand: hydratedBrand,
+        productsData: hydratedProducts,
+        audienceData: hydratedAudience,
+        comms: hydratedComms,
+      }
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(nextDraft))
+    }
+
+    hydrateFromCompany()
+    return () => { cancelled = true }
+  }, [activeCompany, user])
 
   // Auto-save to localStorage on every change
   const persistDraft = useCallback(() => {
@@ -436,10 +526,10 @@ export default function OnboardingPage() {
   const handleComplete = async () => {
     setSaving(true)
     try {
-      const company = await createCompany(general.name || 'My Company')
+      const company = activeCompany ?? await createCompany(general.name || 'My Company')
       if (!company) throw new Error('Failed to create company')
 
-      await updateCompany(company.id, {
+      const companyUpdates = {
         industry: general.industry,
         website: general.website,
         founded_year: general.founded_year,
@@ -453,16 +543,19 @@ export default function OnboardingPage() {
         targets: comms.targets,
         channels: comms.channels,
         frequency: comms.frequency,
-      })
-
-      for (const p of productsData.products.filter(p => p.name.trim())) {
-        await addProduct(p as Omit<Product, 'id' | 'company_id' | 'created_at'>)
       }
-      for (const s of audienceData.segments.filter(s => s.name.trim())) {
-        await addSegment(s as Omit<AudienceSegment, 'id' | 'company_id' | 'created_at'>)
-      }
+      await updateCompany(company.id, companyUpdates)
 
-      await setActiveCompany(company)
+      await saveProducts(
+        company.id,
+        productsData.products.filter(p => p.name.trim()) as Omit<Product, 'id' | 'company_id' | 'created_at'>[]
+      )
+      await saveSegments(
+        company.id,
+        audienceData.segments.filter(s => s.name.trim()) as Omit<AudienceSegment, 'id' | 'company_id' | 'created_at'>[]
+      )
+
+      await setActiveCompany({ ...company, ...companyUpdates })
       clearDraft() // ← wipe draft on success
       navigate('/workspace')
     } catch (e) {
@@ -474,16 +567,12 @@ export default function OnboardingPage() {
 
   return (
     <div className="min-h-full p-6 flex flex-col items-center">
-      <div className="w-full max-w-2xl">
+      <div className="w-full max-w-3xl">
         {/* Header */}
         <div className="mb-8 text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-full text-sm font-medium mb-4">
-            <Zap className="w-3.5 h-3.5" />
-            {t('onboarding.badge')}
-          </div>
           <h1 className="text-2xl font-bold text-[var(--color-text)] font-sans">{t('onboarding.title')}</h1>
           <p className="text-sm text-[var(--color-text-muted)] mt-2 max-w-md mx-auto">{t('onboarding.subtitle')}</p>
-          {draft && (
+          {initialDraft && (
             <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2">
               ✓ {t('sidebar.offlineTitle')} — {t('sidebar.offlineDesc')}
             </p>
@@ -513,7 +602,7 @@ export default function OnboardingPage() {
         </div>
 
         {/* Card */}
-        <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-sm">
+        <div className="mb-20 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-sm">
           <div className="px-6 py-5 border-b border-[var(--color-border)]">
             <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wider mb-1">
               {t('onboarding.step')} {step} {t('onboarding.of')} {TOTAL_STEPS}
@@ -531,7 +620,10 @@ export default function OnboardingPage() {
 
           <div className="px-6 py-4 border-t border-[var(--color-border)] flex justify-between">
             <button
-              onClick={() => setStep(s => Math.max(1, s - 1))}
+              onClick={() => {
+                persistDraft()
+                setStep(s => Math.max(1, s - 1))
+              }}
               disabled={step === 1}
               className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)] disabled:opacity-0 transition-colors"
             >
@@ -540,14 +632,20 @@ export default function OnboardingPage() {
 
             {step < TOTAL_STEPS ? (
               <button
-                onClick={() => setStep(s => s + 1)}
+                onClick={() => {
+                  persistDraft()
+                  setStep(s => s + 1)
+                }}
                 className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-colors"
               >
                 {t('onboarding.continue')} <ArrowRight className="w-4 h-4" />
               </button>
             ) : (
               <button
-                onClick={handleComplete}
+                onClick={async () => {
+                  persistDraft()
+                  await handleComplete()
+                }}
                 disabled={saving}
                 className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-semibold rounded-xl transition-colors"
               >

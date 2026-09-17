@@ -11,6 +11,7 @@ interface AuthContextValue {
   profile: Profile | null
   session: Session | null
   loading: boolean
+  apiKeyConfigured: boolean
   signIn: (email: string, password: string) => Promise<string | null>
   signUp: (name: string, email: string, password: string) => Promise<string | null>
   signInWithGoogle: () => Promise<void>
@@ -26,21 +27,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const [apiKeyConfigured, setApiKeyConfigured] = useState(false)
 
   const fetchProfile = useCallback(async (userId: string) => {
     const { data } = await supabase
       .from('profiles')
-      .select('*')
+      .select('id, name, email, lang, created_at')
       .eq('id', userId)
       .single()
     if (data) {
       const profileData = data as unknown as Profile
       setProfile(profileData)
-      if (profileData.api_key) {
-        localStorage.setItem('flowcom:groq_key', profileData.api_key)
-      } else {
-        localStorage.removeItem('flowcom:groq_key')
-      }
+      const { data: keyStatus } = await supabase.functions.invoke<{ configured?: boolean }>('groq', {
+        body: { status: true },
+      })
+      setApiKeyConfigured(Boolean(keyStatus?.configured))
     }
   }, [])
 
@@ -59,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         fetchProfile(session.user.id)
       } else {
         setProfile(null)
+        setApiKeyConfigured(false)
       }
     })
 
@@ -101,15 +103,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut = async () => {
-    localStorage.removeItem('flowcom:groq_key')
+    setApiKeyConfigured(false)
     await supabase.auth.signOut()
   }
 
   const updateApiKey = async (key: string) => {
     if (!user) return
     await supabase.from('profiles').update({ api_key: key }).eq('id', user.id)
-    setProfile(prev => prev ? { ...prev, api_key: key } : prev)
-    localStorage.setItem('flowcom:groq_key', key)
+    setApiKeyConfigured(Boolean(key))
   }
 
   const updateProfile = async (updates: Partial<Profile>) => {
@@ -120,7 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, profile, session, loading,
+      user, profile, session, loading, apiKeyConfigured,
       signIn, signUp, signInWithGoogle, signOut,
       updateApiKey, updateProfile,
     }}>

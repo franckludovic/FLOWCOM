@@ -1,13 +1,17 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
-  BookMarked, Search, Filter, Trash2, Edit2, Save, Copy, Send, Settings, Loader2, Check, X
+  BookMarked, Search, Filter, Trash2, Edit2, Save, Copy, Send
 } from 'lucide-react'
 import {
   FaLinkedinIn, FaInstagram, FaTiktok, FaFacebookF,
   FaYoutube, FaXTwitter, FaWhatsapp, FaEnvelope, FaWordpress, FaPodcast,
 } from 'react-icons/fa6'
 import { useI18n } from '@/contexts/I18nContext'
+import { useCompany } from '@/contexts/CompanyContext'
 import { cn } from '@/lib/utils'
+import { supabase } from '@/lib/supabase'
+import { toLibraryInsert } from '@/lib/dataMappers'
 
 // ─── Interfaces & Config ─────────────────────────────────────────
 interface LibraryItem {
@@ -54,7 +58,10 @@ const NEXT_STATUS: Record<string, LibraryItem['status']> = {
 // ─── Main Page ─────────────────────────────────────────────────
 export default function LibraryPage() {
   const { t, lang } = useI18n()
+  const { activeCompany } = useCompany()
+  const navigate = useNavigate()
   const [items, setItems] = useState<LibraryItem[]>([])
+  const [loadingItems, setLoadingItems] = useState(true)
 
   // Filters
   const [search, setSearch] = useState('')
@@ -69,75 +76,43 @@ export default function LibraryPage() {
   
   const [itemToDelete, setItemToDelete] = useState<string | null>(null)
 
-  // Webhook
-  const [webhookUrl, setWebhookUrl] = useState('')
-  const [isPublishing, setIsPublishing] = useState<string | null>(null)
-  const [webhookConfigOpen, setWebhookConfigOpen] = useState(false)
-  const [publishSuccess, setPublishSuccess] = useState<string | null>(null)
-
   useEffect(() => {
-    const raw = localStorage.getItem('flowcom:library')
-    if (raw) {
-      try { setItems(JSON.parse(raw)) } catch { setItems([]) }
+    let cancelled = false
+    const loadItems = async () => {
+      if (!activeCompany) { setItems([]); setLoadingItems(false); return }
+      setLoadingItems(true)
+      const { data } = await supabase.from('library_items').select('*').eq('company_id', activeCompany.id).order('created_at', { ascending: false })
+      if (!cancelled) {
+        setItems((data ?? []) as LibraryItem[])
+        setLoadingItems(false)
+      }
     }
-    const wh = localStorage.getItem('flowcom:webhook')
-    if (wh) setWebhookUrl(wh)
-  }, [])
+    loadItems()
+    return () => { cancelled = true }
+  }, [activeCompany?.id])
 
-  const saveToStorage = (newItems: LibraryItem[]) => {
+  const saveToStorage = async (newItems: LibraryItem[]) => {
+    if (!activeCompany) return
     setItems(newItems)
-    localStorage.setItem('flowcom:library', JSON.stringify(newItems))
+    await supabase.from('library_items').delete().eq('company_id', activeCompany.id)
+    if (newItems.length) {
+      await supabase.from('library_items').insert(newItems.map(item => toLibraryInsert(item, activeCompany.id)))
+    }
     window.dispatchEvent(new Event('flowcom:data-updated'))
   }
 
-  const saveWebhook = (url: string) => {
-    setWebhookUrl(url)
-    localStorage.setItem('flowcom:webhook', url)
-  }
-
   // ─── Actions ───
-  const cycleStatus = (id: string) => {
-    saveToStorage(items.map(i => i.id === id ? { ...i, status: NEXT_STATUS[i.status] } : i))
+  const cycleStatus = async (id: string) => {
+    await saveToStorage(items.map(i => i.id === id ? { ...i, status: NEXT_STATUS[i.status] } : i))
   }
 
-  const handleDirectPublish = async (item: LibraryItem) => {
-    if (!webhookUrl) {
-      setWebhookConfigOpen(true)
-      return
-    }
-    setIsPublishing(item.id)
-    try {
-      const res = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: item.id,
-          title: item.title,
-          content: item.body,
-          channel: item.channel,
-          format: item.format,
-          visual_idea: item.visual_idea,
-          published_at: new Date().toISOString()
-        })
-      })
-      if (!res.ok) throw new Error('Webhook failed')
-      
-      // Auto-update status to Published
-      saveToStorage(items.map(i => i.id === item.id ? { ...i, status: 'Published' } : i))
-      
-      setPublishSuccess(item.id)
-      setTimeout(() => setPublishSuccess(null), 3000)
-    } catch (err) {
-      console.error(err)
-      alert(lang === 'fr' ? 'Erreur lors de la publication vers le Webhook.' : 'Error publishing to Webhook.')
-    } finally {
-      setIsPublishing(null)
-    }
+  const openStudio = (item: LibraryItem) => {
+    navigate(`/studio?item=${encodeURIComponent(item.id)}`)
   }
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!itemToDelete) return
-    saveToStorage(items.filter(i => i.id !== itemToDelete))
+    await saveToStorage(items.filter(i => i.id !== itemToDelete))
     setItemToDelete(null)
   }
 
@@ -147,9 +122,9 @@ export default function LibraryPage() {
     setEditBody(item.body)
   }
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!editingId) return
-    saveToStorage(items.map(i => i.id === editingId ? { ...i, title: editTitle, body: editBody } : i))
+    await saveToStorage(items.map(i => i.id === editingId ? { ...i, title: editTitle, body: editBody } : i))
     setEditingId(null)
   }
 
@@ -204,13 +179,6 @@ export default function LibraryPage() {
             </p>
           </div>
         </div>
-        <button 
-          onClick={() => setWebhookConfigOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-surface-alt)] hover:bg-[var(--color-surface)] border border-[var(--color-border)] text-sm font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors shadow-sm"
-        >
-          <Settings className="w-3.5 h-3.5" />
-          Webhook Config
-        </button>
       </div>
 
       {/* ── Metrics Cards ── */}
@@ -295,7 +263,9 @@ export default function LibraryPage() {
 
       {/* ── Content Grid ── */}
       <div className="flex-1 pb-6">
-        {items.length === 0 ? (
+        {loadingItems ? (
+          <div className="py-24 text-center text-sm text-[var(--color-text-muted)]">Loading library...</div>
+        ) : items.length === 0 ? (
           <div className="flex flex-col items-center justify-center text-center py-24">
             <div className="w-16 h-16 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-center mb-3 shadow-sm">
               <BookMarked className="w-6 h-6 text-[var(--color-text-muted)]" />
@@ -311,11 +281,8 @@ export default function LibraryPage() {
             {filteredItems.map(item => {
               const meta = CHANNEL_MAP[item.channel]
               const isEditing = editingId === item.id
-              const isItemPublishing = isPublishing === item.id
-              const isItemSuccess = publishSuccess === item.id
-
               return (
-                <div key={item.id} className={cn("bg-[var(--color-surface)] border rounded-2xl overflow-hidden flex flex-col shadow-sm hover:shadow-md transition-all", isItemSuccess ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-[var(--color-border)]')}>
+                <div key={item.id} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl overflow-hidden flex flex-col shadow-sm hover:shadow-md transition-all">
                   
                   {/* Card Header */}
                   <div className="p-4 border-b border-[var(--color-border)] bg-[var(--color-surface-alt)] flex flex-wrap items-center justify-between gap-3">
@@ -355,9 +322,9 @@ export default function LibraryPage() {
                       
                       <div className="h-4 w-px bg-[var(--color-border)] mx-1" />
                       
-                      <button onClick={() => handleDirectPublish(item)} disabled={isItemPublishing} className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm transition-colors", isItemSuccess ? 'bg-emerald-500' : 'bg-violet-600 hover:bg-violet-700 disabled:opacity-50')} title="Publish via Webhook">
-                        {isItemPublishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : isItemSuccess ? <Check className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
-                        {isItemSuccess ? 'Published' : 'Publish'}
+                      <button onClick={() => openStudio(item)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 shadow-sm transition-colors" title="Open in Studio">
+                        <Send className="w-3.5 h-3.5" />
+                        Publish
                       </button>
 
                       <button onClick={() => { copyToClipboard(item.body); }} className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface)] transition-colors" title="Copy">
@@ -417,46 +384,6 @@ export default function LibraryPage() {
               </button>
               <button onClick={handleDelete} className="px-4 py-2 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors shadow-sm">
                 {t('library.deleteConfirmBtn')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Webhook Modal ── */}
-      {webhookConfigOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6 max-w-md w-full shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3 text-violet-600 dark:text-violet-400">
-                <Settings className="w-6 h-6" />
-                <h3 className="text-lg font-bold text-[var(--color-text)]">
-                  {lang === 'fr' ? 'Configuration Webhook' : 'Webhook Configuration'}
-                </h3>
-              </div>
-              <button onClick={() => setWebhookConfigOpen(false)} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <p className="text-sm text-[var(--color-text-muted)] mb-5">
-              {lang === 'fr' ? 'Connectez FlowCom à Make.com ou Zapier. Collez l\'URL de votre Webhook personnalisé ci-dessous. Lorsque vous cliquez sur "Publier", FlowCom enverra un POST avec les données de votre contenu vers cette URL.' : 'Connect FlowCom to Make.com or Zapier. Paste your Custom Webhook URL below. When you click "Publish", FlowCom will send a POST with your content data to this URL.'}
-            </p>
-            
-            <input 
-              type="url"
-              value={webhookUrl}
-              onChange={e => saveWebhook(e.target.value)}
-              placeholder="https://hook.make.com/..."
-              className="w-full px-4 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)] text-sm text-[var(--color-text)] mb-6 outline-none focus:ring-2 focus:ring-violet-500"
-            />
-            
-            <div className="flex justify-end gap-3">
-              <button 
-                onClick={() => setWebhookConfigOpen(false)}
-                className="px-4 py-2 rounded-xl text-sm font-semibold bg-violet-600 text-white hover:bg-violet-700 transition-colors"
-              >
-                {lang === 'fr' ? 'Terminé' : 'Done'}
               </button>
             </div>
           </div>

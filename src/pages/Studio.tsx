@@ -1,9 +1,24 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import EmojiPicker, { Theme as EmojiTheme, type EmojiClickData } from 'emoji-picker-react'
 import { useI18n } from '@/contexts/I18nContext'
-import { Send, Check, Loader2, AlertCircle, CheckSquare, Image as ImageIcon } from 'lucide-react'
+import { useCompany } from '@/contexts/CompanyContext'
+import { useTheme } from '@/contexts/ThemeContext'
+import { supabase } from '@/lib/supabase'
+import { Send, Check, Loader2, AlertCircle, CheckSquare, Upload, X, Smile } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const BUFFER_ENDPOINT = '/buffer-api/graphql'
+const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string | undefined
+const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET as string | undefined
+
+interface SelectedMedia {
+  id: string
+  file: File
+  previewUrl: string
+  kind: 'image' | 'video'
+  publicUrl?: string
+}
 
 async function bufferQuery(token: string, query: string, variables?: object) {
   const res = await fetch(BUFFER_ENDPOINT, {
@@ -22,6 +37,9 @@ async function bufferQuery(token: string, query: string, variables?: object) {
 
 export default function StudioPage() {
   const { lang } = useI18n()
+  const { theme } = useTheme()
+  const { activeCompany } = useCompany()
+  const [searchParams] = useSearchParams()
   const bufferToken = import.meta.env.VITE_BUFFER_API_KEY
 
   const [profiles, setProfiles] = useState<any[]>([])
@@ -29,7 +47,12 @@ export default function StudioPage() {
   const [error, setError] = useState('')
 
   const [content, setContent] = useState('')
-  const [imageUrl, setImageUrl] = useState('')
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
+  const [media, setMedia] = useState<SelectedMedia[]>([])
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const mediaInputRef = useRef<HTMLInputElement>(null)
+  const contentInputRef = useRef<HTMLTextAreaElement>(null)
+  const emojiPickerRef = useRef<HTMLDivElement>(null)
   const [selectedProfiles, setSelectedProfiles] = useState<string[]>([])
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
 
@@ -70,11 +93,83 @@ export default function StudioPage() {
 
   const [libraryItems, setLibraryItems] = useState<any[]>([])
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem('flowcom:library')
-      if (raw) setLibraryItems(JSON.parse(raw))
-    } catch {}
-  }, [])
+    let cancelled = false
+    const loadLibrary = async () => {
+      if (!activeCompany) { setLibraryItems([]); return }
+      const { data } = await supabase.from('library_items').select('*').eq('company_id', activeCompany.id).order('created_at', { ascending: false })
+      if (!cancelled) setLibraryItems(data ?? [])
+    }
+    loadLibrary()
+    return () => { cancelled = true }
+  }, [activeCompany?.id])
+
+  useEffect(() => {
+    const itemId = searchParams.get('item')
+    if (!itemId) return
+    const item = libraryItems.find(candidate => candidate.id === itemId)
+    if (!item) return
+    setContent(item.body ?? '')
+    setMedia([])
+    setSelectedItemId(item.id)
+  }, [searchParams, libraryItems])
+
+  useEffect(() => {
+    if (!emojiPickerOpen) return
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!emojiPickerRef.current?.contains(event.target as Node)) setEmojiPickerOpen(false)
+    }
+    document.addEventListener('mousedown', closeOnOutsideClick)
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick)
+  }, [emojiPickerOpen])
+
+  const chooseMedia = (files: FileList | File[] | undefined) => {
+    if (!files) return
+    const nextFiles = Array.from(files)
+    const validFiles = nextFiles.filter(file => file.type.startsWith('image/') || file.type.startsWith('video/'))
+    if (validFiles.length !== nextFiles.length) {
+      setError(lang === 'fr' ? 'Seules les images et vidéos sont acceptées.' : 'Only image and video files are accepted.')
+    }
+    const oversized = validFiles.find(file => file.size > 50 * 1024 * 1024)
+    if (oversized) {
+      setError(lang === 'fr' ? 'Chaque fichier doit faire moins de 50 Mo.' : 'Each file must be smaller than 50 MB.')
+      return
+    }
+    const additions = validFiles.map(file => ({
+      id: `${file.name}-${file.lastModified}-${Math.random()}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+      kind: file.type.startsWith('video/') ? 'video' as const : 'image' as const,
+    }))
+    setMedia(previous => [...previous, ...additions])
+    if (validFiles.length > 0) setError('')
+  }
+
+  const removeMedia = (id: string) => {
+    setMedia(previous => {
+      const item = previous.find(mediaItem => mediaItem.id === id)
+      if (item) URL.revokeObjectURL(item.previewUrl)
+      return previous.filter(mediaItem => mediaItem.id !== id)
+    })
+  }
+
+  const uploadMedia = async (item: SelectedMedia): Promise<string> => {
+    if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
+      throw new Error(lang === 'fr'
+        ? 'Cloudinary n’est pas configuré. Ajoutez le cloud name et le preset d’upload.'
+        : 'Cloudinary is not configured. Add the cloud name and upload preset.')
+    }
+    const body = new FormData()
+    body.append('file', item.file)
+    body.append('upload_preset', CLOUDINARY_UPLOAD_PRESET)
+    const resourceType = item.kind === 'video' ? 'video' : 'image'
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`, {
+      method: 'POST',
+      body,
+    })
+    const result = await response.json() as { secure_url?: string; error?: { message?: string } }
+    if (!response.ok || !result.secure_url) throw new Error(result.error?.message ?? 'Image upload failed')
+    return result.secure_url
+  }
 
   // Publish to each selected channel individually
   const handlePublish = async () => {
@@ -82,6 +177,17 @@ export default function StudioPage() {
     setIsPublishing(true)
     setError('')
     try {
+      let uploadedMedia = media
+      if (media.some(item => !item.publicUrl)) {
+        setUploadingImage(true)
+        uploadedMedia = []
+        for (const item of media) {
+          const publicUrl = item.publicUrl ?? await uploadMedia(item)
+          uploadedMedia.push({ ...item, publicUrl })
+        }
+        setMedia(uploadedMedia)
+        setUploadingImage(false)
+      }
       // Build one mutation per channel, injecting service-specific metadata
       const results = await Promise.all(
         selectedProfiles.map(channelId => {
@@ -96,7 +202,11 @@ export default function StudioPage() {
             metadataFragment = `metadata: { instagram: { type: feed } }`
           }
 
-          const hasImage = !!imageUrl.trim()
+          const assets = uploadedMedia.filter(item => item.publicUrl).map(item =>
+            item.kind === 'video'
+              ? `{ video: { url: "${item.publicUrl}" } }`
+              : `{ image: { url: "${item.publicUrl}" } }`
+          )
 
           const mutation = `
             mutation CreatePost($text: String!, $channelId: ChannelId!) {
@@ -106,7 +216,7 @@ export default function StudioPage() {
                 schedulingType: automatic,
                 mode: shareNow
                 ${metadataFragment}
-                ${hasImage ? `assets: [{ image: { url: "${imageUrl.trim()}" } }]` : ''}
+                ${assets.length ? `assets: [${assets.join(', ')}]` : ''}
               }) {
                 ... on PostActionSuccess { post { id } }
                 ... on MutationError { message }
@@ -123,27 +233,24 @@ export default function StudioPage() {
 
       // Update library status if loaded from library
       if (selectedItemId) {
-        const raw = localStorage.getItem('flowcom:library')
-        if (raw) {
-          const items = JSON.parse(raw)
-          const updated = items.map((i: any) => i.id === selectedItemId ? { ...i, status: 'Published' } : i)
-          localStorage.setItem('flowcom:library', JSON.stringify(updated))
-          window.dispatchEvent(new Event('flowcom:data-updated'))
-          setLibraryItems(updated)
-        }
+        await supabase.from('library_items').update({ status: 'Published' }).eq('id', selectedItemId)
+        setLibraryItems(items => items.map(item => item.id === selectedItemId ? { ...item, status: 'Published' } : item))
+        window.dispatchEvent(new Event('flowcom:data-updated'))
       }
 
       setPublishSuccess(true)
       setTimeout(() => {
         setPublishSuccess(false)
         setContent('')
-        setImageUrl('')
+        media.forEach(item => URL.revokeObjectURL(item.previewUrl))
+        setMedia([])
         setSelectedItemId(null)
       }, 3000)
     } catch (e: any) {
       console.error(e)
       setError(lang === 'fr' ? `Erreur: ${e.message}` : `Error: ${e.message}`)
     } finally {
+      setUploadingImage(false)
       setIsPublishing(false)
     }
   }
@@ -156,7 +263,25 @@ export default function StudioPage() {
 
   const selectFromLibrary = (item: any) => {
     setContent(item.body)
+    setMedia([])
     setSelectedItemId(item.id)
+  }
+
+  const insertEmoji = (emoji: string) => {
+    const input = contentInputRef.current
+    const start = input?.selectionStart ?? content.length
+    const end = input?.selectionEnd ?? content.length
+    const nextContent = `${content.slice(0, start)}${emoji}${content.slice(end)}`
+    setContent(nextContent)
+    window.requestAnimationFrame(() => {
+      input?.focus()
+      const cursor = start + emoji.length
+      input?.setSelectionRange(cursor, cursor)
+    })
+  }
+
+  const handleEmojiClick = (emojiData: EmojiClickData) => {
+    insertEmoji(emojiData.emoji)
   }
 
   return (
@@ -168,7 +293,7 @@ export default function StudioPage() {
           <Send className="w-4 h-4 text-white" />
         </div>
         <div>
-          <h1 className="text-xl font-bold text-[var(--color-text)] font-sans leading-tight">Buffer Studio</h1>
+          <h1 className="text-xl font-bold text-[var(--color-text)] font-sans leading-tight">Studio</h1>
           <p className="text-xs text-[var(--color-text-muted)]">
             {lang === 'fr' ? 'Publiez simultanément sur plusieurs réseaux via Buffer.' : 'Publish simultaneously to multiple networks via Buffer.'}
           </p>
@@ -189,26 +314,97 @@ export default function StudioPage() {
         <div className="flex flex-col gap-4 flex-1 min-w-0">
           
           {/* Post Content Editor */}
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5 flex flex-col flex-1 shadow-sm min-h-0">
+          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5 pb-2 flex flex-col flex-1 shadow-sm min-h-0">
             <h2 className="text-sm font-bold text-[var(--color-text)] mb-3 shrink-0">{lang === 'fr' ? 'Contenu du Post' : 'Post Content'}</h2>
-            <textarea
-              value={content}
-              onChange={e => {
-                setContent(e.target.value)
-                setSelectedItemId(null)
-              }}
-              placeholder={lang === 'fr' ? 'Écrivez votre post ici...' : 'Write your post here...'}
-              className="flex-1 w-full p-4 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm text-[var(--color-text)] resize-none"
-            />
-            <div className="mt-3 shrink-0 flex items-center gap-3">
-              <ImageIcon className="w-4 h-4 text-[var(--color-text-muted)] shrink-0" />
-              <input 
-                type="text"
-                value={imageUrl}
-                onChange={e => setImageUrl(e.target.value)}
-                placeholder={lang === 'fr' ? "URL de l'image (optionnel)" : 'Image URL (optional)'}
-                className="flex-1 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-xs text-[var(--color-text)] outline-none focus:ring-2 focus:ring-blue-500"
+            <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_136px] gap-3">
+              <textarea
+                ref={contentInputRef}
+                value={content}
+                onChange={e => {
+                  setContent(e.target.value)
+                  setSelectedItemId(null)
+                }}
+                placeholder={lang === 'fr' ? 'Écrivez votre post ici...' : 'Write your post here...'}
+                className="min-h-48 lg:min-h-0 w-full p-4 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm text-[var(--color-text)] resize-none"
               />
+              <div className="relative min-h-36 lg:h-full flex flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)] p-2">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => mediaInputRef.current?.click()}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter' || event.key === ' ') mediaInputRef.current?.click()
+                  }}
+                  onDragOver={event => event.preventDefault()}
+                  onDrop={event => {
+                    event.preventDefault()
+                    chooseMedia(event.dataTransfer.files)
+                  }}
+                  className="aspect-[5/3] flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-[var(--color-border)] hover:border-blue-400 transition-colors cursor-pointer"
+                >
+                  <Upload className="w-4 h-4 text-blue-500" />
+                  <span className="text-[10px] text-center font-semibold text-[var(--color-text-muted)]">{uploadingImage ? (lang === 'fr' ? 'Téléversement...' : 'Uploading...') : (lang === 'fr' ? 'Ajouter image ou vidéo' : 'Add image or video')}</span>
+                  <span className="text-[9px] text-[var(--color-text-muted)]">{lang === 'fr' ? 'Déposer ou cliquer' : 'Drop or click'}</span>
+                  <input
+                    ref={mediaInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
+                    multiple
+                    className="hidden"
+                    onChange={event => chooseMedia(event.target.files ?? undefined)}
+                  />
+                </div>
+                {media.length > 0 && (
+                  <div className="mt-2 flex-1 min-h-0 max-h-44 overflow-y-auto grid grid-cols-1 gap-2 content-start pr-1">
+                    {media.map(item => (
+                      <div key={item.id} className="relative aspect-[5/3] rounded-lg overflow-hidden border border-[var(--color-border)] bg-[var(--color-surface)] group">
+                        {item.kind === 'video' ? (
+                          <video src={item.previewUrl} className="w-full h-full object-contain" muted />
+                        ) : (
+                          <img src={item.previewUrl} alt={item.file.name} className="w-full h-full object-contain" />
+                        )}
+                        <span className="absolute bottom-1 left-1 px-1 py-0.5 rounded bg-black/65 text-[8px] uppercase text-white">{item.kind}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeMedia(item.id)}
+                          className="absolute top-1 right-1 p-1 rounded-md bg-black/65 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                          title={lang === 'fr' ? 'Retirer' : 'Remove'}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-2 text-[9px] leading-tight text-[var(--color-text-muted)]">{lang === 'fr' ? 'Images et vidéos · 50 Mo max' : 'Images and videos · 50 MB max'}</p>
+              </div>
+            </div>
+            <div className="relative mt-3 flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setEmojiPickerOpen(previous => !previous)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[var(--color-text-muted)] hover:text-blue-600 hover:bg-[var(--color-surface-alt)] transition-colors"
+                title={lang === 'fr' ? 'Ajouter un emoji' : 'Add emoji'}
+              >
+                <Smile className="w-4 h-4" />
+                {lang === 'fr' ? 'Emoji' : 'Emoji'}
+              </button>
+              {emojiPickerOpen && (
+                <div ref={emojiPickerRef} className="absolute left-0 bottom-full mb-2 z-30">
+                  <EmojiPicker
+                    onEmojiClick={handleEmojiClick}
+                    theme={theme === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
+                    width={280}
+                    height={300}
+                    previewConfig={{ showPreview: false }}
+                    searchPlaceHolder={lang === 'fr' ? 'Rechercher un emoji' : 'Search emoji'}
+                    lazyLoadEmojis
+                  />
+                </div>
+              )}
+              <span className="text-[10px] text-[var(--color-text-muted)]">
+                {lang === 'fr' ? 'Ajoutez des emojis directement dans le texte.' : 'Add emojis directly to your text.'}
+              </span>
             </div>
           </div>
           
@@ -247,7 +443,7 @@ export default function StudioPage() {
           
           <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5 shadow-sm flex-1 flex flex-col min-h-0">
             <h2 className="text-sm font-bold text-[var(--color-text)] mb-1 shrink-0">{lang === 'fr' ? 'Réseaux Sociaux' : 'Social Networks'}</h2>
-            <p className="text-xs text-[var(--color-text-muted)] mb-4 shrink-0">{lang === 'fr' ? 'Sélectionnez vos profils Buffer' : 'Select your Buffer profiles'}</p>
+            <p className="text-xs text-[var(--color-text-muted)] mb-4 shrink-0">{lang === 'fr' ? 'Sélectionnez vos profils Buffer' : 'Select your profiles'}</p>
             
             <div className="flex-1 overflow-y-auto min-h-0">
               {loadingProfiles ? (

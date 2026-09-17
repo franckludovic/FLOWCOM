@@ -17,8 +17,10 @@ interface CompanyContextValue {
   updateCompany: (id: string, updates: Partial<Company>) => Promise<void>
   deleteCompany: (id: string) => Promise<void>
   addProduct: (product: Omit<Product, 'id' | 'company_id' | 'created_at'>) => Promise<void>
+  saveProducts: (companyId: string, products: Array<Omit<Product, 'id' | 'company_id' | 'created_at'>>) => Promise<void>
   removeProduct: (id: string) => Promise<void>
   addSegment: (segment: Omit<AudienceSegment, 'id' | 'company_id' | 'created_at'>) => Promise<void>
+  saveSegments: (companyId: string, segments: Array<Omit<AudienceSegment, 'id' | 'company_id' | 'created_at'>>) => Promise<void>
   removeSegment: (id: string) => Promise<void>
   addKeyMessage: (content: string) => Promise<void>
   removeKeyMessage: (id: string) => Promise<void>
@@ -126,6 +128,19 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     if (data) setProducts(prev => [...prev, data as unknown as Product])
   }
 
+  const saveProducts = async (companyId: string, nextProducts: Array<Omit<Product, 'id' | 'company_id' | 'created_at'>>) => {
+    await supabase.from('products').delete().eq('company_id', companyId)
+    if (nextProducts.length) {
+      const { data } = await supabase
+        .from('products')
+        .insert(nextProducts.map(product => ({ ...product, company_id: companyId })))
+        .select()
+      setProducts((data ?? []) as unknown as Product[])
+    } else {
+      setProducts([])
+    }
+  }
+
   const removeProduct = async (id: string) => {
     await supabase.from('products').delete().eq('id', id)
     setProducts(prev => prev.filter(p => p.id !== id))
@@ -135,6 +150,19 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     if (!activeCompany) return
     const { data } = await supabase.from('audience_segments').insert({ ...segment, company_id: activeCompany.id }).select().single()
     if (data) setSegments(prev => [...prev, data as unknown as AudienceSegment])
+  }
+
+  const saveSegments = async (companyId: string, nextSegments: Array<Omit<AudienceSegment, 'id' | 'company_id' | 'created_at'>>) => {
+    await supabase.from('audience_segments').delete().eq('company_id', companyId)
+    if (nextSegments.length) {
+      const { data } = await supabase
+        .from('audience_segments')
+        .insert(nextSegments.map(segment => ({ ...segment, company_id: companyId })))
+        .select()
+      setSegments((data ?? []) as unknown as AudienceSegment[])
+    } else {
+      setSegments([])
+    }
   }
 
   const removeSegment = async (id: string) => {
@@ -161,7 +189,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     <CompanyContext.Provider value={{
       companies, activeCompany, products, segments, keyMessages, loading,
       setActiveCompany, createCompany, updateCompany, deleteCompany,
-      addProduct, removeProduct, addSegment, removeSegment,
+      addProduct, saveProducts, removeProduct, addSegment, saveSegments, removeSegment,
       addKeyMessage, removeKeyMessage, refreshCompanyData,
     }}>
       {children}

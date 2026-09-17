@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useI18n } from '@/contexts/I18nContext'
 import { useCompany } from '@/contexts/CompanyContext'
-import { useAuth } from '@/contexts/AuthContext'
 import { Plus, Trash2, Save, BarChart2, Brain, Check, Loader2, History, AlertCircle, Sparkles, RefreshCw, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { callGroqJSON, buildGroqError } from '@/lib/groq'
+import { buildAiContext } from '@/lib/aiContext'
 
 const BUFFER_ENDPOINT = '/buffer-api/graphql'
 
@@ -78,8 +78,7 @@ const emptyPost = (): AnalyzedPost => ({
 
 export default function ReportPage() {
   const { t, lang } = useI18n()
-  const { activeCompany, addKeyMessage } = useCompany()
-  const { profile } = useAuth()
+  const { activeCompany, products, segments, keyMessages, addKeyMessage } = useCompany()
   const bufferToken = import.meta.env.VITE_BUFFER_API_KEY
 
   const [history, setHistory] = useState<WeeklyReport[]>([])
@@ -172,12 +171,6 @@ export default function ReportPage() {
   })()
 
   const runAnalysis = async () => {
-    const apiKey = profile?.api_key ?? localStorage.getItem('flowcom:groq_key')
-    if (!apiKey) {
-      setError(t('report.aiNoKey' as any))
-      return
-    }
-    
     // Check if we have data
     const validPosts = posts.filter(p => parseInt(p.reach) > 0)
     if (validPosts.length === 0) {
@@ -188,8 +181,7 @@ export default function ReportPage() {
     setAnalyzing(true)
     setError(null)
 
-    const context = `
-Company: ${activeCompany?.name} (${activeCompany?.industry})
+    const context = `${buildAiContext({ company: activeCompany, products, segments, keyMessages })}
 Total Score: ${scores.total}/35 (Hook:${scores.hook}, Ret:${scores.retention}, Shares:${scores.shares}, Saves:${scores.saves}, Eng:${scores.engagement}, Gro:${scores.growth}, Conv:${scores.conversion})
 
 Posts Data:
@@ -201,10 +193,10 @@ ${validPosts.map(p => `- ${p.title} (${p.channel}): Reach=${p.reach}, 3sViews=${
       : `Act as an expert Social Media analyst. Analyze these weekly metrics and provide a strict JSON report structured with: "whatWorked" (array of bullet points), "whatToStop" (array of bullet points), "adjustments" (array of tweaks for next week), and "insights" (deep audience learnings to memorize). Be concrete and highly specific.`
 
     try {
-      const res = await callGroqJSON<ReportAnalysis>(apiKey, [
+      const res = await callGroqJSON<ReportAnalysis>('', [
         { role: 'system', content: prompt },
         { role: 'user', content: context }
-      ], { temperature: 0.4 })
+      ], { temperature: 0.4, requiredKeys: ['whatWorked', 'whatToStop', 'adjustments', 'insights'] })
       
       setAnalysis(res)
       setSavedToMemory(false)

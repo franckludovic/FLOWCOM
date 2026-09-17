@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useI18n } from '@/contexts/I18nContext'
 import { useCompany } from '@/contexts/CompanyContext'
-import { useAuth } from '@/contexts/AuthContext'
 import { Check, Target, Zap, Bot, RefreshCw, AlertCircle, Calendar, Flag, BookOpen, Loader2, Cpu } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { callGroq, buildGroqError } from '@/lib/groq'
+import { buildAiContext } from '@/lib/aiContext'
+import { supabase } from '@/lib/supabase'
 
 const MILESTONES = [
   { id: 'm1', phase: 1 },
@@ -33,11 +34,11 @@ const PHASES = [
 
 export default function RoadmapPage() {
   const { t, lang } = useI18n()
-  const { activeCompany, products, segments } = useCompany()
-  const { profile } = useAuth()
+  const { activeCompany, products, segments, keyMessages } = useCompany()
   
   // Manual overrides stored in localStorage (user can still toggle manually)
   const [manualChecked, setManualChecked] = useState<string[]>([])
+  const [libraryItems, setLibraryItems] = useState<Array<{ status: string; format?: string; contentType?: string; hook?: string }>>([])
   const [dataVersion, setDataVersion] = useState(0)
   const [advice, setAdvice] = useState<string>('')
   const [loadingAdvice, setLoadingAdvice] = useState(false)
@@ -53,27 +54,25 @@ export default function RoadmapPage() {
     }
   }, [])
 
-  // Load saved manual progress + advice
+  // Load saved roadmap progress and library data for this company.
   useEffect(() => {
-    const raw = localStorage.getItem('flowcom:roadmap_manual')
-    if (raw) {
-      try { setManualChecked(JSON.parse(raw)) } catch {}
+    let cancelled = false
+    const loadRoadmapData = async () => {
+      if (!activeCompany) return
+      const [{ data: milestones }, { data: library }] = await Promise.all([
+        supabase.from('roadmap_milestones').select('milestone_id').eq('company_id', activeCompany.id).eq('completed', true),
+        supabase.from('library_items').select('status, format, hook').eq('company_id', activeCompany.id),
+      ])
+      if (cancelled) return
+      setManualChecked((milestones ?? []).map(milestone => milestone.milestone_id))
+      setLibraryItems((library ?? []) as typeof libraryItems)
     }
-    const rawAdvice = localStorage.getItem('flowcom:roadmap_ai_advice')
-    if (rawAdvice) setAdvice(rawAdvice)
-  }, [])
-
-  const readLibrary = () => {
-    try {
-      const raw = localStorage.getItem('flowcom:library')
-      return raw ? JSON.parse(raw) : []
-    } catch {
-      return []
-    }
-  }
+    loadRoadmapData()
+    return () => { cancelled = true }
+  }, [activeCompany?.id])
 
   const milestoneProgress = useMemo<Record<string, { current: number; target: number }>>(() => {
-    const library = readLibrary()
+    const library = libraryItems
     const validated = library.filter((i: any) => i.status === 'Validated' || i.status === 'Published')
     const published = library.filter((i: any) => i.status === 'Published')
     const videoCount = library.filter((i: any) => i.format === 'Video' || i.contentType === 'Video').length
@@ -89,13 +88,13 @@ export default function RoadmapPage() {
       m11: { current: Math.min(formats.size, 2), target: 2 },
       m13: { current: Math.min(published.length, 5), target: 5 },
     }
-  }, [activeCompany, products, segments, dataVersion])
+  }, [activeCompany, products, segments, libraryItems, dataVersion])
 
   // Auto-detect which milestones are completed from real app data
   const autoDetected = useMemo<string[]>(() => {
     const detected: string[] = []
     const c = activeCompany
-    const library = readLibrary()
+    const library = libraryItems
 
     // Phase 1 — Foundations
     // M1: Company profile complete (name + industry + description)
@@ -126,7 +125,7 @@ export default function RoadmapPage() {
     if (published.length >= 5) detected.push('m13')
 
     return detected
-  }, [activeCompany, products, segments, dataVersion])
+  }, [activeCompany, products, segments, libraryItems, dataVersion])
 
   // Merge: auto-detected + manually checked (user can add manual ones for items we can't auto-detect)
   const completed = useMemo(() => {
@@ -135,10 +134,19 @@ export default function RoadmapPage() {
 
   // Save manual overrides
   useEffect(() => {
-    localStorage.setItem('flowcom:roadmap_manual', JSON.stringify(manualChecked))
-    // Also keep the legacy key for backward compat
-    localStorage.setItem('flowcom:roadmap_progress', JSON.stringify(completed))
-  }, [manualChecked, completed])
+    if (!activeCompany) return
+    const saveProgress = async () => {
+      await supabase.from('roadmap_milestones').delete().eq('company_id', activeCompany.id)
+      if (manualChecked.length) {
+        await supabase.from('roadmap_milestones').insert(manualChecked.map(milestone_id => ({
+          company_id: activeCompany.id,
+          milestone_id,
+          completed: true,
+        })))
+      }
+    }
+    saveProgress()
+  }, [activeCompany?.id, manualChecked])
 
   const toggleMilestone = (id: string) => {
     // If auto-detected, can't uncheck; otherwise toggle manually
@@ -151,11 +159,6 @@ export default function RoadmapPage() {
   const progress = Math.round((completed.length / MILESTONES.length) * 100)
 
   const generateAdvice = async () => {
-    const apiKey = profile?.api_key ?? localStorage.getItem('flowcom:groq_key')
-    if (!apiKey) {
-      setError(t('error.noKey'))
-      return
-    }
     setLoadingAdvice(true)
     setError(null)
 
@@ -164,24 +167,20 @@ export default function RoadmapPage() {
     
     let nextStepText = nextMilestone ? t(`roadmap.${nextMilestone.id}` as any) : (lang === 'fr' ? 'Terminé !' : 'All done!')
     
-    const context = `
-Company Name: ${activeCompany?.name}
-Industry: ${activeCompany?.industry}
-Completed ${completed.length}/${MILESTONES.length} milestones.
-Next target milestone: ${nextStepText}
-`
+    const context = `${buildAiContext({ company: activeCompany, products, segments, keyMessages })}
+  Completed ${completed.length}/${MILESTONES.length} milestones.
+  Next target milestone: ${nextStepText}`
 
     const prompt = lang === 'fr' 
       ? `Tu es le Coach IA stratégique de FlowCom. L'utilisateur a complété ${completed.length} sur ${MILESTONES.length} étapes. La prochaine étape est : "${nextStepText}". Donne 2 conseils très courts, ultra-pratiques et encourageants pour réussir cette étape. Ne liste pas d'autres étapes. Format Markdown. Garde un ton direct et pro.`
       : `You are FlowCom's AI Strategic Coach. The user has completed ${completed.length} of ${MILESTONES.length} milestones. The next milestone is: "${nextStepText}". Give 2 very short, highly practical, and encouraging tips to achieve this milestone. Do not list other milestones. Use Markdown format. Keep it direct and professional.`
 
     try {
-      const res = await callGroq(apiKey, [
+      const res = await callGroq('', [
         { role: 'system', content: prompt },
         { role: 'user', content: context }
       ], { temperature: 0.6 })
       setAdvice(res)
-      localStorage.setItem('flowcom:roadmap_ai_advice', res)
     } catch (e) {
       setError(t(buildGroqError(e) as any))
     } finally {
