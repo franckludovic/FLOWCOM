@@ -3,6 +3,7 @@ import { ThemeProvider } from '@/contexts/ThemeContext'
 import { I18nProvider } from '@/contexts/I18nContext'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { CompanyProvider } from '@/contexts/CompanyContext'
+import { BufferProvider } from '@/contexts/BufferContext'
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
 import { AppShell } from '@/components/layout/AppShell'
 import AuthPage from '@/pages/Auth'
@@ -24,24 +25,26 @@ export default function App() {
         <BrowserRouter>
           <AuthProvider>
             <CompanyProvider>
-              <Routes>
-                <Route path="/auth" element={<AuthPage />} />
-                <Route element={<ProtectedRoute />}>
-                  <Route element={<AppShell />}>
-                    <Route path="/workspace" element={<WorkspacePage />} />
-                    <Route path="/onboarding" element={<OnboardingPage />} />
-                    <Route path="/memory" element={<MemoryPage />} />
-                    <Route path="/calendar" element={<CalendarPage />} />
-                    <Route path="/content" element={<ContentPage />} />
-                    <Route path="/library" element={<LibraryPage />} />
-                    <Route path="/studio" element={<StudioPage />} />
-                    <Route path="/roadmap" element={<RoadmapPage />} />
-                    <Route path="/report" element={<ReportPage />} />
-                    <Route path="/publishing-history" element={<PublishingHistoryPage />} />
+              <BufferProvider>
+                <Routes>
+                  <Route path="/auth" element={<AuthPage />} />
+                  <Route element={<ProtectedRoute />}>
+                    <Route element={<AppShell />}>
+                      <Route path="/workspace"          element={<WorkspacePage />} />
+                      <Route path="/onboarding"         element={<OnboardingPage />} />
+                      <Route path="/memory"             element={<MemoryPage />} />
+                      <Route path="/calendar"           element={<CalendarPage />} />
+                      <Route path="/content"            element={<ContentPage />} />
+                      <Route path="/library"            element={<LibraryPage />} />
+                      <Route path="/studio"             element={<StudioPage />} />
+                      <Route path="/roadmap"            element={<RoadmapPage />} />
+                      <Route path="/report"             element={<ReportPage />} />
+                      <Route path="/publishing-history" element={<PublishingHistoryPage />} />
+                    </Route>
                   </Route>
-                </Route>
-                <Route path="*" element={<Navigate to="/workspace" replace />} />
-              </Routes>
+                  <Route path="*" element={<Navigate to="/workspace" replace />} />
+                </Routes>
+              </BufferProvider>
             </CompanyProvider>
           </AuthProvider>
         </BrowserRouter>

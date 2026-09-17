@@ -1,27 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useI18n } from '@/contexts/I18nContext'
 import { useCompany } from '@/contexts/CompanyContext'
+import { useBuffer, bufferQuery } from '@/contexts/BufferContext'
 import { Plus, Trash2, Save, BarChart2, Brain, Check, Loader2, History, AlertCircle, Sparkles, RefreshCw, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { callGroqJSON, buildGroqError } from '@/lib/groq'
 import { buildAiContext } from '@/lib/aiContext'
-
-const BUFFER_ENDPOINT = '/buffer-api/graphql'
-
-async function bufferQuery(token: string, query: string, variables?: object) {
-  const res = await fetch(BUFFER_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ query, variables })
-  })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const json = await res.json()
-  if (json.errors) throw new Error(json.errors[0].message)
-  return json.data
-}
 
 interface AnalyzedPost {
   id: string
@@ -79,6 +63,7 @@ const emptyPost = (): AnalyzedPost => ({
 export default function ReportPage() {
   const { t, lang } = useI18n()
   const { activeCompany, products, segments, keyMessages, addKeyMessage } = useCompany()
+  const { orgId, channels: bufferChannels } = useBuffer()
   const bufferToken = import.meta.env.VITE_BUFFER_API_KEY
 
   const [history, setHistory] = useState<WeeklyReport[]>([])
@@ -212,19 +197,14 @@ ${validPosts.map(p => `- ${p.title} (${p.channel}): Reach=${p.reach}, 3sViews=${
       alert(lang === 'fr' ? 'Clé API Buffer manquante.' : 'Missing Buffer API Key.')
       return
     }
+    if (!orgId) {
+      alert(lang === 'fr' ? 'Buffer non connecté.' : 'Buffer not connected yet.')
+      return
+    }
     setImporting(true)
     setError(null)
     try {
-      const accountData = await bufferQuery(bufferToken, `{ account { organizations { id } } }`)
-      const orgId = accountData?.account?.organizations?.[0]?.id
-      if (!orgId) throw new Error('No organization found')
-
-      const channelData = await bufferQuery(bufferToken,
-        `query Channels($input: ChannelsInput!) { channels(input: $input) { id name service } }`,
-        { input: { organizationId: orgId } }
-      )
-      const channels = channelData?.channels || []
-
+      // org + channels already in context — only fetch posts
       const postsData = await bufferQuery(bufferToken, `
         query GetPostsWithMetrics($orgId: OrganizationId!) {
           posts(
@@ -252,7 +232,7 @@ ${validPosts.map(p => `- ${p.title} (${p.channel}): Reach=${p.reach}, 3sViews=${
       const edges = postsData?.posts?.edges || []
       const importedPosts: AnalyzedPost[] = edges.map((edge: any) => {
         const node = edge.node
-        const ch = channels.find((c: any) => c.id === node.channelId)
+        const ch = bufferChannels.find((c: any) => c.id === node.channelId)
         
         let reach = 0, comments = 0, shares = 0, saves = 0, views3s = 0, likes = 0
         ;(node.metrics || []).forEach((m: any) => {
