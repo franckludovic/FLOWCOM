@@ -287,7 +287,7 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
         const result = await callGroqJSON<ScoreResult>('', [
           {
             role: 'system',
-            content: `You are a social media hook analyst. Score this hook on 3 axes. Return JSON exactly: {"scrollStop":"Weak|Good|Strong","clarity":"Weak|Good|Strong","intrigue":"Weak|Good|Strong","suggestion":"one concrete improvement in max 15 words"}. Be honest and strict — most hooks are Weak or Good, Strong is rare.`,
+            content: `You are a social media hook analyst. Score this hook on 3 axes. Return JSON exactly: {"scrollStop":"Weak|Good|Strong","clarity":"Weak|Good|Strong","intrigue":"Weak|Good|Strong","suggestion":"one concrete improvement in max 15 words"}. Be honest and strict — most hooks are Weak or Good, Strong is rare. Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`,
           },
           { role: 'user', content: `Hook: "${hook}"\nChannel: ${CHANNEL_MAP[channel]?.label ?? channel}\nTone: ${tone}` },
         ], { temperature: 0.2, max_tokens: 150, requiredKeys: ['scrollStop', 'clarity', 'intrigue', 'suggestion'] })

@@ -367,7 +367,7 @@ export default function PublishingHistoryPage() {
         const result = await callGroqJSON<{ bullets: string[]; recommendation: string }>('', [
           {
             role: 'system',
-            content: `You are a social media analyst. Analyze these recent published posts and identify patterns. Return JSON exactly matching: {"bullets":["string","string","string"],"recommendation":"string"}. The bullets array must have exactly 3 short observations (max 12 words each) about: topics covered, channels used, and content style/format patterns. The recommendation must be one concrete actionable sentence (max 20 words). Base everything only on the posts provided — do not invent data.\nBrand context:\n${ctx}`,
+            content: `You are a social media analyst. Analyze these recent published posts and identify patterns. Return JSON exactly matching: {"bullets":["string","string","string"],"recommendation":"string"}. The bullets array must have exactly 3 short observations (max 12 words each) about: topics covered, channels used, and content style/format patterns. The recommendation must be one concrete actionable sentence (max 20 words). Base everything only on the posts provided — do not invent data.\nBrand context:\n${ctx}\nRespond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`,
           },
           { role: 'user', content: `Analyze these ${allPosts.slice(0, 15).length} recent published posts:\n\n${sample}` },
         ], { temperature: 0.3, max_tokens: 300, requiredKeys: ['bullets', 'recommendation'] })

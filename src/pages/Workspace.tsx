@@ -20,7 +20,7 @@ interface WorkspaceActivity {
 const ACTIVITY_TTL = 24 * 60 * 60 * 1000
 
 export default function WorkspacePage() {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const { activeCompany, products, segments, keyMessages } = useCompany()
   const { profile } = useAuth()
   const navigate = useNavigate()
@@ -105,7 +105,7 @@ export default function WorkspacePage() {
       const result = await callGroqJSON<{ activities: WorkspaceActivity[] }>('', [
         {
           role: 'system',
-          content: `You are FlowCom's proactive communication strategist. Turn the live workspace signals into three useful, non-duplicated next actions. Prioritize missing foundations before optimization. Return only JSON matching: {"activities":[{"title":"short string","reason":"one sentence grounded in a signal","action":"short button label","route":"/content or /calendar or /roadmap or /memory or /onboarding or /studio or /library or /publishing-history or /report","step":"number required only when route is /onboarding: 1 for company info, 2 for brand identity, 3 for products, 4 for audience, 5 for communication","priority":"high or medium or low"}]}. For onboarding actions, always include the exact step. Use the publishing and draft signals to suggest concrete actions: if drafts are stale suggest publishing them via /studio, if no report was filed suggest /report, if no posts were published in 30 days suggest /studio. Do not invent facts.\nCompany context:\n${buildAiContext({ company: activeCompany, products, segments, keyMessages })}\nLive signals:\n${signals}`
+          content: `You are FlowCom's proactive communication strategist. Turn the live workspace signals into three useful, non-duplicated next actions. Prioritize missing foundations before optimization. Return only JSON matching: {"activities":[{"title":"short string","reason":"one sentence grounded in a signal","action":"short button label","route":"/content or /calendar or /roadmap or /memory or /onboarding or /studio or /library or /publishing-history or /report","step":"number required only when route is /onboarding: 1 for company info, 2 for brand identity, 3 for products, 4 for audience, 5 for communication","priority":"high or medium or low"}]}. For onboarding actions, always include the exact step. Use the publishing and draft signals to suggest concrete actions: if drafts are stale suggest publishing them via /studio, if no report was filed suggest /report, if no posts were published in 30 days suggest /studio. Do not invent facts.\nCompany context:\n${buildAiContext({ company: activeCompany, products, segments, keyMessages })}\nLive signals:\n${signals}\nRespond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
         },
         { role: 'user', content: 'What are the three most useful next actions right now?' }
       ], { temperature: 0.4, max_tokens: 600, requiredKeys: ['activities'] })

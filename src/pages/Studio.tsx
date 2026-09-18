@@ -574,7 +574,7 @@ export default function StudioPage() {
     try {
       const ctx = buildAiContext({ company: activeCompany, products, segments, keyMessages })
       const result = await callGroq('', [
-        { role: 'system', content: `You are a social media copywriter. ${tone.prompt}\n\nBrand context:\n${ctx}\n\nReturn ONLY the rewritten post. No explanation, no quotes.` },
+        { role: 'system', content: `You are a social media copywriter. ${tone.prompt}\n\nBrand context:\n${ctx}\n\nReturn ONLY the rewritten post. No explanation, no quotes. Respond in ${lang === 'fr' ? 'French' : 'English'}.` },
         { role: 'user', content: text },
       ], { temperature: 0.75, max_tokens: 1024 })
       const cleaned = result.trim().replace(/^["']|["']$/g, '')
@@ -607,7 +607,7 @@ export default function StudioPage() {
       const result = await callGroq('', [
         {
           role: 'system',
-          content: `You are a social media publishing assistant doing a quick pre-flight check. Analyze this post and return ONLY a JSON array of issues (0–2 strings, max 15 words each): ["issue1","issue2"]. Flag ONLY real problems: missing CTA when the goal is conversion, text significantly over the ${charLimit}-char limit for ${preset}, tone clearly mismatched with the brand. If the post is fine, return []. Do not invent issues. Brand context:\n${ctx}`,
+          content: `You are a social media publishing assistant doing a quick pre-flight check. Analyze this post and return ONLY a JSON array of issues (0–2 strings, max 15 words each): ["issue1","issue2"]. Flag ONLY real problems: missing CTA when the goal is conversion, text significantly over the ${charLimit}-char limit for ${preset}, tone clearly mismatched with the brand. If the post is fine, return []. Do not invent issues. Brand context:\n${ctx}\nRespond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`,
         },
         { role: 'user', content: `Post text (${fullText.length} chars):\n${fullText.slice(0, 600)}\n\nTarget channels: ${selectedServices}\nPreset: ${preset}` },
       ], { temperature: 0.1, max_tokens: 100 })

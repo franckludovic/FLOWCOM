@@ -334,7 +334,7 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
         const result = await callGroqJSON<GapResult>('', [
           {
             role: 'system',
-            content: `You are an editorial calendar auditor. Analyze this month's content plan and identify real problems. Return JSON exactly: {"warnings":["string","string"]} — an array of 1 to 3 short warning strings (max 15 words each). Only flag real issues: publishing gaps > 5 days, channel imbalance vs brand preference, goals that are overrepresented or missing. If the plan is good, return {"warnings":[]}. Do not invent problems.`,
+            content: `You are an editorial calendar auditor. Analyze this month's content plan and identify real problems. Return JSON exactly: {"warnings":["string","string"]} — an array of 1 to 3 short warning strings (max 15 words each). Only flag real issues: publishing gaps > 5 days, channel imbalance vs brand preference, goals that are overrepresented or missing. If the plan is good, return {"warnings":[]}. Do not invent problems. Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`,
           },
           { role: 'user', content: planSummary },
         ], { temperature: 0.2, max_tokens: 200, requiredKeys: ['warnings'] })
