@@ -27,18 +27,40 @@ export default function WorkspacePage() {
   const [activities, setActivities] = useState<WorkspaceActivity[]>([])
   const [briefLoading, setBriefLoading] = useState(false)
   const [briefError, setBriefError] = useState('')
-  const [workspaceCounts, setWorkspaceCounts] = useState({ calendar: 0, library: 0, roadmap: 0 })
+  const [workspaceCounts, setWorkspaceCounts] = useState({ calendar: 0, library: 0, roadmap: 0, publishedLast30: 0, staleDrafts: 0, hasReportThisWeek: false })
 
   useEffect(() => {
     let cancelled = false
     const loadCounts = async () => {
       if (!activeCompany) return
-      const [{ count: calendar }, { count: library }, { count: roadmap }] = await Promise.all([
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+      const sevenDaysAgo  = new Date(Date.now() -  7 * 24 * 60 * 60 * 1000).toISOString()
+      const weekStart     = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay())
+      const weekStartIso  = weekStart.toISOString().split('T')[0]
+
+      const [
+        { count: calendar },
+        { count: library },
+        { count: roadmap },
+        { count: publishedLast30 },
+        { data: staleDraftData },
+        { data: recentReports },
+      ] = await Promise.all([
         supabase.from('calendar_items').select('id', { count: 'exact', head: true }).eq('company_id', activeCompany.id),
         supabase.from('library_items').select('id', { count: 'exact', head: true }).eq('company_id', activeCompany.id),
         supabase.from('roadmap_milestones').select('id', { count: 'exact', head: true }).eq('company_id', activeCompany.id).eq('completed', true),
+        supabase.from('library_items').select('id', { count: 'exact', head: true }).eq('company_id', activeCompany.id).eq('status', 'Published').gte('created_at', thirtyDaysAgo),
+        supabase.from('library_items').select('id').eq('company_id', activeCompany.id).eq('status', 'Draft').lte('created_at', sevenDaysAgo),
+        supabase.from('weekly_reports').select('id').eq('company_id', activeCompany.id).gte('created_at', weekStartIso).limit(1),
       ])
-      if (!cancelled) setWorkspaceCounts({ calendar: calendar ?? 0, library: library ?? 0, roadmap: roadmap ?? 0 })
+      if (!cancelled) setWorkspaceCounts({
+        calendar: calendar ?? 0,
+        library: library ?? 0,
+        roadmap: roadmap ?? 0,
+        publishedLast30: publishedLast30 ?? 0,
+        staleDrafts: staleDraftData?.length ?? 0,
+        hasReportThisWeek: (recentReports?.length ?? 0) > 0,
+      })
     }
     loadCounts()
     return () => { cancelled = true }
@@ -46,10 +68,13 @@ export default function WorkspacePage() {
 
   const loadActivities = async (force = false) => {
     if (!activeCompany) return
-    const calendarCount = workspaceCounts.calendar
-    const libraryCount = workspaceCounts.library
-    const roadmapCount = workspaceCounts.roadmap
-    const fingerprint = [products.length, segments.length, keyMessages.length, calendarCount, libraryCount, roadmapCount].join('-')
+    const calendarCount    = workspaceCounts.calendar
+    const libraryCount     = workspaceCounts.library
+    const roadmapCount     = workspaceCounts.roadmap
+    const publishedLast30  = workspaceCounts.publishedLast30
+    const staleDrafts      = workspaceCounts.staleDrafts
+    const hasReportThisWeek = workspaceCounts.hasReportThisWeek
+    const fingerprint = [products.length, segments.length, keyMessages.length, calendarCount, libraryCount, roadmapCount, publishedLast30, staleDrafts, hasReportThisWeek ? '1' : '0'].join('-')
     const cacheKey = `flowcom:workspace_activity:v2:${activeCompany.id}:${fingerprint}`
     if (!force) {
       try {
@@ -70,18 +95,21 @@ export default function WorkspacePage() {
         `Products configured: ${products.length}`,
         `Audience segments configured: ${segments.length}`,
         `Key messages configured: ${keyMessages.length}`,
-        `Calendar ideas saved locally: ${calendarCount}`,
-        `Library posts saved locally: ${libraryCount}`,
-        `Roadmap milestones marked locally: ${roadmapCount}`,
+        `Calendar ideas saved: ${calendarCount}`,
+        `Library posts saved: ${libraryCount}`,
+        `Roadmap milestones completed: ${roadmapCount}`,
+        `Posts published in last 30 days: ${publishedLast30}`,
+        `Draft posts sitting untouched for more than 7 days: ${staleDrafts}`,
+        `Weekly performance report filed this week: ${hasReportThisWeek ? 'yes' : 'no'}`,
       ].join('\n')
       const result = await callGroqJSON<{ activities: WorkspaceActivity[] }>('', [
         {
           role: 'system',
-          content: `You are FlowCom's proactive communication strategist. Turn the live workspace signals into three useful, non-duplicated next actions. Prioritize missing foundations before optimization. Return only JSON matching: {"activities":[{"title":"short string","reason":"one sentence grounded in a signal","action":"short button label","route":"/content or /calendar or /roadmap or /memory or /onboarding","step":"number required only when route is /onboarding: 1 for company info, 2 for brand identity, 3 for products, 4 for audience, 5 for communication","priority":"high or medium or low"}]}. For onboarding actions, always include the exact step. Do not invent facts or recommend work that the signals do not support.\nCompany context:\n${buildAiContext({ company: activeCompany, products, segments, keyMessages })}\nLive signals:\n${signals}`
+          content: `You are FlowCom's proactive communication strategist. Turn the live workspace signals into three useful, non-duplicated next actions. Prioritize missing foundations before optimization. Return only JSON matching: {"activities":[{"title":"short string","reason":"one sentence grounded in a signal","action":"short button label","route":"/content or /calendar or /roadmap or /memory or /onboarding or /studio or /library or /publishing-history or /report","step":"number required only when route is /onboarding: 1 for company info, 2 for brand identity, 3 for products, 4 for audience, 5 for communication","priority":"high or medium or low"}]}. For onboarding actions, always include the exact step. Use the publishing and draft signals to suggest concrete actions: if drafts are stale suggest publishing them via /studio, if no report was filed suggest /report, if no posts were published in 30 days suggest /studio. Do not invent facts.\nCompany context:\n${buildAiContext({ company: activeCompany, products, segments, keyMessages })}\nLive signals:\n${signals}`
         },
         { role: 'user', content: 'What are the three most useful next actions right now?' }
       ], { temperature: 0.4, max_tokens: 600, requiredKeys: ['activities'] })
-      const validRoutes = ['/content', '/calendar', '/roadmap', '/memory', '/onboarding']
+      const validRoutes = ['/content', '/calendar', '/roadmap', '/memory', '/onboarding', '/studio', '/library', '/publishing-history', '/report']
       const safeActivities = (result.activities ?? []).filter(activity =>
         activity.title && activity.reason && activity.action && validRoutes.includes(activity.route) &&
         (activity.route !== '/onboarding' || Number.isInteger(activity.step) && activity.step! >= 1 && activity.step! <= 5)

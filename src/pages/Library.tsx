@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  BookMarked, Search, Filter, Trash2, Edit2, Save, Copy, Send
+  BookMarked, Search, Filter, Trash2, Edit2, Save, Copy, Send, Wand2
 } from 'lucide-react'
 import {
   FaLinkedinIn, FaInstagram, FaTiktok, FaFacebookF,
@@ -9,9 +9,12 @@ import {
 } from 'react-icons/fa6'
 import { useI18n } from '@/contexts/I18nContext'
 import { useCompany } from '@/contexts/CompanyContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { toLibraryInsert } from '@/lib/dataMappers'
+import { callGroq } from '@/lib/groq'
+import { buildAiContext } from '@/lib/aiContext'
 
 // ─── Interfaces & Config ─────────────────────────────────────────
 interface LibraryItem {
@@ -58,7 +61,8 @@ const NEXT_STATUS: Record<string, LibraryItem['status']> = {
 // ─── Main Page ─────────────────────────────────────────────────
 export default function LibraryPage() {
   const { t, lang } = useI18n()
-  const { activeCompany } = useCompany()
+  const { activeCompany, products, segments, keyMessages } = useCompany()
+  const { apiKeyConfigured } = useAuth()
   const navigate = useNavigate()
   const [items, setItems] = useState<LibraryItem[]>([])
   const [loadingItems, setLoadingItems] = useState(true)
@@ -90,6 +94,96 @@ export default function LibraryPage() {
     loadItems()
     return () => { cancelled = true }
   }, [activeCompany?.id])
+
+  // ── AI content scores ─────────────────────────────────────────────────────
+  // score: 'ready' | 'good' | 'needs-work'
+  // Primary store: Supabase content_scores table (syncs across devices)
+  // Secondary: localStorage for instant reads without waiting for DB
+  type ScoreLevel = 'ready' | 'good' | 'needs-work'
+  const localKey = `flowcom:library_scores:${activeCompany?.id ?? 'default'}`
+
+  const [scores, setScores] = useState<Record<string, ScoreLevel>>(() => {
+    try { return JSON.parse(localStorage.getItem(localKey) ?? '{}') }
+    catch { return {} }
+  })
+  const scoringRef = useRef(false)
+
+  // Load scores from Supabase when company changes (authoritative source)
+  useEffect(() => {
+    if (!activeCompany) return
+    supabase
+      .from('content_scores')
+      .select('item_id, score')
+      .eq('company_id', activeCompany.id)
+      .then(({ data }) => {
+        if (!data?.length) return
+        const remote: Record<string, ScoreLevel> = {}
+        data.forEach(r => { remote[r.item_id] = r.score as ScoreLevel })
+        setScores(prev => {
+          const merged = { ...prev, ...remote }
+          localStorage.setItem(localKey, JSON.stringify(merged))
+          return merged
+        })
+      })
+  }, [activeCompany?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist new scores to Supabase + localStorage
+  const persistScores = async (newScores: Record<string, ScoreLevel>) => {
+    if (!activeCompany || Object.keys(newScores).length === 0) return
+    setScores(prev => {
+      const merged = { ...prev, ...newScores }
+      localStorage.setItem(localKey, JSON.stringify(merged))
+      return merged
+    })
+    // Upsert to Supabase (unique constraint on company_id + item_id)
+    const rows = Object.entries(newScores).map(([item_id, score]) => ({
+      company_id: activeCompany.id,
+      item_id,
+      score,
+      scored_at: new Date().toISOString(),
+    }))
+    await supabase
+      .from('content_scores')
+      .upsert(rows, { onConflict: 'company_id,item_id' })
+  }
+
+  // Background scorer — runs when items load, scores up to 5 unscored items
+  useEffect(() => {
+    if (!apiKeyConfigured || scoringRef.current) return
+    const unscored = items
+      .filter(i => i.status !== 'Archived' && !scores[i.id] && (i.hook || i.body))
+      .slice(0, 5)
+    if (unscored.length === 0) return
+
+    scoringRef.current = true
+    const ctx = buildAiContext({ company: activeCompany, products, segments, keyMessages })
+
+    const runBatch = async () => {
+      const newScores: Record<string, ScoreLevel> = {}
+      for (const item of unscored) {
+        try {
+          const text = [item.hook, item.body].filter(Boolean).join('\n').slice(0, 400)
+          const result = await callGroq('', [
+            {
+              role: 'system',
+              content: `You are a social media content reviewer. Rate this ${item.channel} ${item.format} content. Reply with ONLY one word: "ready" (strong hook, clear message, good CTA), "good" (decent but could be improved), or "needs-work" (weak hook, unclear, or missing CTA). Brand context:\n${ctx}`,
+            },
+            { role: 'user', content: text },
+          ], { temperature: 0.1, max_tokens: 10 })
+          const word = result.trim().toLowerCase().replace(/[^a-z-]/g, '')
+          if (word === 'ready' || word === 'good' || word === 'needs-work') {
+            newScores[item.id] = word as ScoreLevel
+          }
+        } catch {
+          // Skip silently
+        }
+        await new Promise(r => setTimeout(r, 1000))
+      }
+      await persistScores(newScores)
+      scoringRef.current = false
+    }
+    runBatch()
+  }, [items.length, apiKeyConfigured]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveToStorage = async (newItems: LibraryItem[]) => {
     if (!activeCompany) return
@@ -319,6 +413,21 @@ export default function LibraryPage() {
                       >
                         {t(`status.${item.status}` as any) || item.status}
                       </button>
+
+                      {/* AI score chip */}
+                      {scores[item.id] && (
+                        <span className={cn(
+                          'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border',
+                          scores[item.id] === 'ready'      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800'
+                          : scores[item.id] === 'good'     ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800'
+                          :                                  'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800'
+                        )}>
+                          <Wand2 className="w-2.5 h-2.5" />
+                          {scores[item.id] === 'ready' ? (lang === 'fr' ? 'Prêt' : 'Ready')
+                            : scores[item.id] === 'good' ? (lang === 'fr' ? 'Bien' : 'Good')
+                            : (lang === 'fr' ? 'À améliorer' : 'Needs work')}
+                        </span>
+                      )}
                       
                       <div className="h-4 w-px bg-[var(--color-border)] mx-1" />
                       

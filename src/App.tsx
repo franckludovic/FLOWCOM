@@ -6,6 +6,7 @@ import { CompanyProvider } from '@/contexts/CompanyContext'
 import { BufferProvider } from '@/contexts/BufferContext'
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
 import { AppShell } from '@/components/layout/AppShell'
+import { ErrorBoundary } from '@/components/layout/ErrorBoundary'
 import AuthPage from '@/pages/Auth'
 import WorkspacePage from '@/pages/Workspace'
 import OnboardingPage from '@/pages/Onboarding'
@@ -20,7 +21,8 @@ import PublishingHistoryPage from '@/pages/PublishingHistory'
 
 export default function App() {
   return (
-    <ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
       <I18nProvider>
         <BrowserRouter>
           <AuthProvider>
@@ -50,5 +52,6 @@ export default function App() {
         </BrowserRouter>
       </I18nProvider>
     </ThemeProvider>
+    </ErrorBoundary>
   )
 }

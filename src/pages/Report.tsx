@@ -220,6 +220,7 @@ ${validPosts.map(p => `- ${p.title} (${p.channel}): Reach=${p.reach}, 3sViews=${
                 text
                 channelId
                 metrics {
+                  type
                   name
                   value
                 }
@@ -234,15 +235,23 @@ ${validPosts.map(p => `- ${p.title} (${p.channel}): Reach=${p.reach}, 3sViews=${
         const node = edge.node
         const ch = bufferChannels.find((c: any) => c.id === node.channelId)
         
-        let reach = 0, comments = 0, shares = 0, saves = 0, views3s = 0, likes = 0
+        let reach = 0, comments = 0, shares = 0, saves = 0, views3s = 0, likes = 0, follows = 0
         ;(node.metrics || []).forEach((m: any) => {
           const val = parseInt(m.value) || 0
-          if (m.name === 'impressions' || m.name === 'reach') reach += val
-          if (m.name === 'comments') comments += val
-          if (m.name === 'shares') shares += val
-          if (m.name === 'saves' || m.name === 'bookmarks') saves += val
-          if (m.name === 'video_views') views3s += val
-          if (m.name === 'likes') likes += val
+          // Use m.type (stable enum) for programmatic matching, not m.name (display label)
+          // reactions: Instagram likes, Twitter likes, Mastodon favorites, all Facebook reaction types combined
+          // likes: Facebook Like subcount only (distinct from reactions which sums all FB reaction types)
+          // reposts: Twitter retweets, Mastodon reblogs, Threads reposts
+          // shares: explicit share/forward actions (distinct from reposts)
+          // views: normalized video view count (replaces deprecated video_views)
+          // follows: new followers attributed to the post (Instagram)
+          if (m.type === 'impressions' || m.type === 'reach') reach = Math.max(reach, val)
+          if (m.type === 'reactions' || m.type === 'likes') likes += val
+          if (m.type === 'comments') comments += val
+          if (m.type === 'reposts' || m.type === 'shares') shares += val
+          if (m.type === 'saves') saves += val
+          if (m.type === 'views' || m.type === 'video_views') views3s += val
+          if (m.type === 'follows') follows += val
         })
 
         const title = (node.text || '').substring(0, 30) + '...'
@@ -257,7 +266,7 @@ ${validPosts.map(p => `- ${p.title} (${p.channel}): Reach=${p.reach}, 3sViews=${
           comments: comments.toString(),
           shares: shares.toString(),
           saves: saves.toString(),
-          newFollowers: '',
+          newFollowers: follows ? follows.toString() : '',
           leads: ''
         }
       })
@@ -265,6 +274,14 @@ ${validPosts.map(p => `- ${p.title} (${p.channel}): Reach=${p.reach}, 3sViews=${
       if (importedPosts.length === 0) {
         alert(lang === 'fr' ? 'Aucun post publié trouvé.' : 'No sent posts found.')
         return
+      }
+
+      // Check if metrics came back empty (app token limitation)
+      const hasMetrics = importedPosts.some(p => parseInt(p.reach) > 0 || parseInt(p.comments) > 0)
+      if (!hasMetrics) {
+        setError(lang === 'fr'
+          ? 'Posts importés sans métriques. Les métriques nécessitent une clé API personnelle Buffer (pas un token d\'application).'
+          : 'Posts imported but without metrics. Metrics require a Buffer personal API key — app tokens only return post text.')
       }
 
       setPosts(importedPosts)
@@ -458,6 +475,13 @@ ${validPosts.map(p => `- ${p.title} (${p.channel}): Reach=${p.reach}, 3sViews=${
                 {lang === 'fr' ? 'Auto-importer depuis Buffer' : 'Auto-import from Buffer'}
               </button>
             </div>
+            {/* Personal key notice */}
+            <p className="text-[10px] text-[var(--color-text-muted)] flex items-start gap-1.5 leading-relaxed">
+              <span className="shrink-0 mt-0.5">ℹ️</span>
+              {lang === 'fr'
+                ? 'L\'import automatique nécessite une clé API personnelle Buffer (pas un token d\'application). Les métriques (likes, portée…) ne sont disponibles qu\'avec une clé personnelle.'
+                : 'Auto-import requires a Buffer personal API key (not an app token). Metrics (likes, reach…) are only available with a personal key — app tokens return posts without metric data.'}
+            </p>
           </div>
 
           {/* Right Column: Score & AI */}

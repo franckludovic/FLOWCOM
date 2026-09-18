@@ -12,7 +12,7 @@ import { buildAiContext } from '@/lib/aiContext'
 import {
   Send, Check, Loader2, AlertCircle, CheckSquare,
   Upload, X, Smile, Wand2, RotateCcw, Hash, Film, Briefcase, Layers, Search,
-  Play, Pause, Volume2, VolumeX
+  Play, Pause, Volume2, VolumeX, ShieldCheck, CalendarClock
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -403,28 +403,29 @@ function MediaPlayer({ item, onRemove }: { item: SelectedMedia; onRemove: () => 
 }
 
 // ─── Split body + hashtags when loading a library item ───────────────────────
-// LibraryItem has a dedicated `hashtags` field. If it's populated, use it.
-// If not (older items or items where hashtags leaked into body), extract
-// any trailing #-prefixed words from the body as a fallback.
-function splitBodyAndTags(item: any): { body: string; tags: string } {
-  const rawBody: string = item.body ?? ''
+function splitBodyAndTags(item: any, keepJoined: boolean): { body: string; tags: string } {
+  const rawBody: string = (item.body ?? '').trimEnd()
+  const rawTags: string = (item.hashtags ?? '').trim()
 
-  // 1. Use the dedicated hashtags field if it has content
-  if (item.hashtags?.trim()) {
-    // Also strip any hashtag block that may have been appended to body
-    const bodyWithoutTags = rawBody
-      .replace(/\n+#[\w\s#]+$/s, '')   // trailing block starting with #
-      .trimEnd()
-    return { body: bodyWithoutTags || rawBody, tags: item.hashtags.trim() }
+  if (keepJoined) {
+    // ── Professional: merge hashtags into the body text ──────────────────────
+    if (!rawTags) return { body: rawBody, tags: '' }
+    // Only append if not already present at the end of body
+    if (rawBody.endsWith(rawTags)) return { body: rawBody, tags: '' }
+    return { body: `${rawBody}\n\n${rawTags}`, tags: '' }
   }
 
-  // 2. Fallback: extract trailing hashtags from body
-  // Match a block at the end of the text that is entirely #words separated by spaces/newlines
-  const tagBlockMatch = rawBody.match(/\n+((?:#\w+\s*)+)$/)
-  if (tagBlockMatch) {
-    const tags = tagBlockMatch[1].trim()
-    const body = rawBody.slice(0, rawBody.length - tagBlockMatch[0].length).trimEnd()
-    return { body, tags }
+  // ── Feed / Short-form: put hashtags in the separate field ─────────────────
+  if (rawTags) {
+    // Clean body: remove the hashtag block if it was also appended there
+    const bodyClean = rawBody.replace(/\n{1,2}(?:#\w+\s*)+$/s, '').trimEnd()
+    return { body: bodyClean || rawBody, tags: rawTags }
+  }
+
+  // No dedicated hashtags field — try to extract trailing #tags from body
+  const match = rawBody.match(/^([\s\S]*?)\n{1,2}((?:#\w+\s*)+)$/)
+  if (match) {
+    return { body: match[1].trimEnd(), tags: match[2].trim() }
   }
 
   return { body: rawBody, tags: '' }
@@ -472,6 +473,14 @@ export default function StudioPage() {
   const [publishSuccess, setPublishSuccess] = useState(false)
   const [libraryItems, setLibraryItems]     = useState<any[]>([])
 
+  // Pre-publish AI check
+  const [preCheckModal, setPreCheckModal]   = useState<{ issues: string[] } | null>(null)
+  const [preCheckLoading, setPreCheckLoading] = useState(false)
+
+  // Scheduling — empty string means "publish now"
+  const [scheduledAt, setScheduledAt] = useState('')
+  const [showScheduler, setShowScheduler] = useState(false)
+
   const mediaInputRef   = useRef<HTMLInputElement>(null)
   const contentInputRef = useRef<HTMLTextAreaElement>(null)
   const emojiRef        = useRef<HTMLDivElement>(null)
@@ -486,19 +495,20 @@ export default function StudioPage() {
     return () => { alive = false }
   }, [activeCompany?.id])
 
+  // Keep a ref to preset so effects always read the current value (avoids stale closure)
+  const presetRef = useRef<Preset>(preset)
+  useEffect(() => { presetRef.current = preset }, [preset])
+
   // URL param preload — waits for libraryItems to be populated before applying
-  // Uses a pending ref so the item ID is applied as soon as items load, even if
-  // items arrive after the first render cycle.
   const pendingItemId = useRef<string | null>(null)
 
   useEffect(() => {
     const id = searchParams.get('item')
     if (!id) return
     pendingItemId.current = id
-    // Try to apply immediately if items are already loaded
     const item = libraryItems.find(c => c.id === id)
     if (item) {
-      const { body, tags } = splitBodyAndTags(item)
+      const { body, tags } = splitBodyAndTags(item, presetRef.current === 'professional')
       setContent(body)
       setHashtags(tags)
       setMedia([])
@@ -513,7 +523,7 @@ export default function StudioPage() {
     if (!pendingItemId.current || libraryItems.length === 0) return
     const item = libraryItems.find(c => c.id === pendingItemId.current)
     if (!item) return
-    const { body, tags } = splitBodyAndTags(item)
+    const { body, tags } = splitBodyAndTags(item, presetRef.current === 'professional')
     setContent(body)
     setHashtags(tags)
     setMedia([])
@@ -577,9 +587,58 @@ export default function StudioPage() {
     } finally { setToningId(null) }
   }, [content, apiKeyConfigured, lang, activeCompany, products, segments, keyMessages])
 
+  // Pre-publish AI check — fast, non-blocking
+  const handlePreCheck = async () => {
+    const fullText = (preset !== 'professional' && hashtags.trim())
+      ? `${content.trim()}\n\n${hashtags.trim()}` : content.trim()
+    if (!fullText || selectedProfiles.length === 0) return
+
+    // Skip AI check if Groq not configured — go straight to publish
+    if (!apiKeyConfigured) { handlePublish(); return }
+
+    setPreCheckLoading(true)
+    try {
+      const selectedServices = selectedProfiles
+        .map(id => channels.find(c => c.id === id)?.service ?? '')
+        .filter(Boolean).join(', ')
+      const charLimit = presetCfg.charLimit
+      const ctx = buildAiContext({ company: activeCompany, products, segments, keyMessages })
+
+      const result = await callGroq('', [
+        {
+          role: 'system',
+          content: `You are a social media publishing assistant doing a quick pre-flight check. Analyze this post and return ONLY a JSON array of issues (0–2 strings, max 15 words each): ["issue1","issue2"]. Flag ONLY real problems: missing CTA when the goal is conversion, text significantly over the ${charLimit}-char limit for ${preset}, tone clearly mismatched with the brand. If the post is fine, return []. Do not invent issues. Brand context:\n${ctx}`,
+        },
+        { role: 'user', content: `Post text (${fullText.length} chars):\n${fullText.slice(0, 600)}\n\nTarget channels: ${selectedServices}\nPreset: ${preset}` },
+      ], { temperature: 0.1, max_tokens: 100 })
+
+      let issues: string[] = []
+      try {
+        const parsed = JSON.parse(result.trim())
+        if (Array.isArray(parsed)) {
+          issues = parsed.filter((s): s is string => typeof s === 'string').slice(0, 2)
+        }
+      } catch { /* ignore parse error — treat as no issues */ }
+
+      if (issues.length === 0) {
+        // Clean bill — publish directly without showing modal
+        handlePublish()
+      } else {
+        setPreCheckModal({ issues })
+      }
+    } catch {
+      // AI check failed — don't block publishing
+      handlePublish()
+    } finally {
+      setPreCheckLoading(false)
+    }
+  }
+
   // Publish
   const handlePublish = async () => {
-    const fullText = presetCfg.hashtags && hashtags.trim()
+    // Professional: hashtags are already merged into the body text.
+    // Feed / Short-form: hashtags live in a separate field — append them.
+    const fullText = (preset !== 'professional' && hashtags.trim())
       ? `${content.trim()}\n\n${hashtags.trim()}` : content.trim()
     if (!fullText || selectedProfiles.length === 0) return
     setIsPublishing(true)
@@ -597,12 +656,19 @@ export default function StudioPage() {
         else if (service === 'instagram') meta = `metadata: { instagram: { type: feed } }`
         const assets = um.filter(m => m.publicUrl).map(m =>
           m.kind === 'video' ? `{ video: { url: "${m.publicUrl}" } }` : `{ image: { url: "${m.publicUrl}" } }`)
+
+        // Scheduling: customScheduled + dueAt, or automatic + shareNow
+        const isScheduled = scheduledAt.trim() !== ''
+        const schedulingBlock = isScheduled
+          ? `schedulingType: customScheduled, mode: customScheduled, dueAt: "${new Date(scheduledAt).toISOString()}"`
+          : `schedulingType: automatic, mode: shareNow`
+
         return bufferQuery(bufferToken, `
           mutation CreatePost($text: String!, $channelId: ChannelId!) {
             createPost(input: { text: $text, channelId: $channelId,
-              schedulingType: automatic, mode: shareNow ${meta}
+              ${schedulingBlock} ${meta}
               ${assets.length ? `assets: [${assets.join(',')}]` : ''} }) {
-              ... on PostActionSuccess { post { id } }
+              ... on PostActionSuccess { post { id dueAt } }
               ... on MutationError { message }
             }
           }`, { text: fullText, channelId })
@@ -617,6 +683,7 @@ export default function StudioPage() {
       setPublishSuccess(true)
       setTimeout(() => {
         setPublishSuccess(false); setContent(''); setHashtags(''); setBeforeTone(null)
+        setScheduledAt(''); setShowScheduler(false)
         media.forEach(m => URL.revokeObjectURL(m.previewUrl)); setMedia([]); setSelectedItemId(null)
       }, 3000)
     } catch (e: any) {
@@ -624,11 +691,11 @@ export default function StudioPage() {
     } finally { setUpImg(false); setIsPublishing(false) }
   }
 
-  const charCount = (presetCfg.hashtags && hashtags.trim() ? `${content}\n\n${hashtags}` : content).length
+  const charCount = (preset !== 'professional' && hashtags.trim() ? `${content}\n\n${hashtags}` : content).length
 
   // Load from library search
   const loadFromLibrary = (item: any) => {
-    const { body, tags } = splitBodyAndTags(item)
+    const { body, tags } = splitBodyAndTags(item, presetRef.current === 'professional')
     setContent(body)
     setHashtags(tags)
     setMedia([])
@@ -693,6 +760,50 @@ export default function StudioPage() {
 
       {toast && <Toast message={toast} onDismiss={dismissToast} />}
 
+      {/* Pre-publish check modal */}
+      {preCheckModal && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setPreCheckModal(null)} />
+          <div className="relative w-full max-w-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl p-5 z-10">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-[var(--color-text)]">
+                  {lang === 'fr' ? 'Vérification avant publication' : 'Pre-publish check'}
+                </p>
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  {lang === 'fr' ? 'L\'IA a détecté des points à revoir.' : 'The AI spotted a few things to review.'}
+                </p>
+              </div>
+            </div>
+            <ul className="space-y-2 mb-5">
+              {preCheckModal.issues.map((issue, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-[var(--color-text)]">
+                  <span className="text-amber-500 shrink-0 mt-0.5">⚠</span>
+                  <span>{issue}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPreCheckModal(null)}
+                className="flex-1 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)] text-sm font-semibold text-[var(--color-text)] hover:bg-[var(--color-bg)] transition-colors"
+              >
+                {lang === 'fr' ? 'Corriger d\'abord' : 'Fix first'}
+              </button>
+              <button
+                onClick={() => { setPreCheckModal(null); handlePublish() }}
+                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-sm font-bold text-white transition-colors"
+              >
+                {lang === 'fr' ? 'Publier quand même' : 'Publish anyway'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header row */}
       <div className="flex items-center justify-between gap-3 shrink-0">
         <div className="flex items-center gap-3">
@@ -748,7 +859,6 @@ export default function StudioPage() {
                     onChange={e => { setContent(e.target.value); setSelectedItemId(null); setBeforeTone(null) }}
                     placeholder={lang === 'fr' ? presetCfg.placeholderFr : presetCfg.placeholder}
                     className="flex-1 min-h-0 p-3.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm text-[var(--color-text)] resize-none" />
-                  {/* Side media: upload card + thumbnails scrollable */}
                   <div className="flex flex-col gap-2 w-28 shrink-0 overflow-y-auto">
                     <MediaPanel media={media} onAdd={addMedia} onRemove={removeMedia}
                       uploadingImage={uploadingImage} aspect="side" lang={lang} inputRef={mediaInputRef} />
@@ -876,7 +986,7 @@ export default function StudioPage() {
               {lang === 'fr' ? 'Réseaux' : 'Channels'}
             </p>
             <p className="text-[10px] text-[var(--color-text-muted)] mb-3 shrink-0">
-              {lang === 'fr' ? 'Profils Buffer' : 'Buffer profiles'}
+              {lang === 'fr' ? 'Profils' : 'profiles'}
             </p>
             <div className="flex-1 overflow-y-auto min-h-0">
               {loadingProfiles
@@ -914,12 +1024,63 @@ export default function StudioPage() {
             </div>
           </div>
 
-          <button onClick={handlePublish}
-            disabled={isPublishing || !content.trim() || selectedProfiles.length === 0}
-            className="shrink-0 w-full flex items-center justify-center gap-2 py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl transition-colors shadow-lg shadow-blue-600/20">
-            {isPublishing ? <><Loader2 className="w-4 h-4 animate-spin" />{lang === 'fr' ? 'Publication…' : 'Publishing…'}</>
-              : publishSuccess ? <><Check className="w-4 h-4" />{lang === 'fr' ? 'Publié !' : 'Published!'}</>
-              : <><Send className="w-4 h-4" />{lang === 'fr' ? 'Publier' : 'Publish Now'}</>}
+          {/* ── Schedule picker ── */}
+          <div className="shrink-0 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl overflow-hidden">
+            <button
+              onClick={() => { setShowScheduler(s => !s); if (showScheduler) setScheduledAt('') }}
+              className="w-full flex items-center gap-2.5 px-4 py-3 text-sm font-semibold text-left transition-colors hover:bg-[var(--color-surface-alt)]"
+            >
+              <CalendarClock className={cn('w-4 h-4 shrink-0', scheduledAt ? 'text-blue-500' : 'text-[var(--color-text-muted)]')} />
+              <span className={cn('flex-1', scheduledAt ? 'text-[var(--color-text)]' : 'text-[var(--color-text-muted)]')}>
+                {scheduledAt
+                  ? new Date(scheduledAt).toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+                  : (lang === 'fr' ? 'Programmer pour plus tard' : 'Schedule for later')}
+              </span>
+              {scheduledAt && (
+                <button
+                  onClick={e => { e.stopPropagation(); setScheduledAt(''); setShowScheduler(false) }}
+                  className="shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </button>
+            {showScheduler && (
+              <div className="px-4 pb-3 border-t border-[var(--color-border)]">
+                <label className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide block mt-2.5 mb-1.5">
+                  {lang === 'fr' ? 'Date et heure de publication' : 'Publish date & time'}
+                </label>
+                <input
+                  type="datetime-local"
+                  value={scheduledAt}
+                  min={new Date(Date.now() + 5 * 60 * 1000).toISOString().slice(0, 16)}
+                  onChange={e => setScheduledAt(e.target.value)}
+                  className="w-full px-3 py-2 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-sm text-[var(--color-text)] outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {scheduledAt && (
+                  <p className="mt-1.5 text-[10px] text-[var(--color-text-muted)]">
+                    {lang === 'fr' ? '⏰ Sera envoyé à Buffer pour publication programmée.' : '⏰ Will be sent to Buffer as a scheduled post.'}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── Publish / Schedule button ── */}
+          <button onClick={handlePreCheck}
+            disabled={isPublishing || preCheckLoading || !content.trim() || selectedProfiles.length === 0}
+            className={cn(
+              'shrink-0 w-full flex items-center justify-center gap-2 py-3.5 text-sm font-bold rounded-xl transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed text-white',
+              scheduledAt
+                ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20'
+                : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'
+            )}>
+            {preCheckLoading ? <><Loader2 className="w-4 h-4 animate-spin" />{lang === 'fr' ? 'Vérification…' : 'Checking…'}</>
+              : isPublishing ? <><Loader2 className="w-4 h-4 animate-spin" />{lang === 'fr' ? 'Envoi…' : 'Sending…'}</>
+              : publishSuccess ? <><Check className="w-4 h-4" />{lang === 'fr' ? 'Envoyé !' : 'Sent!'}</>
+              : scheduledAt
+                ? <><CalendarClock className="w-4 h-4" />{lang === 'fr' ? 'Programmer' : 'Schedule'}</>
+                : <><Send className="w-4 h-4" />{lang === 'fr' ? 'Publier' : 'Publish Now'}</>}
           </button>
         </div>
 

@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   FileText, Sparkles, Save, Check, Copy,
-  AlertCircle, RefreshCw, Camera, X, ChevronDown, StickyNote,
+  AlertCircle, RefreshCw, Camera, X, ChevronDown, StickyNote, Wand2, Loader2,
 } from 'lucide-react'
 import {
   FaLinkedinIn, FaInstagram, FaTiktok, FaFacebookF,
@@ -10,6 +10,7 @@ import {
 } from 'react-icons/fa6'
 import { useI18n } from '@/contexts/I18nContext'
 import { useCompany } from '@/contexts/CompanyContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { callGroqJSON, buildGroqError } from '@/lib/groq'
 import { buildAiContext } from '@/lib/aiContext'
 import { supabase } from '@/lib/supabase'
@@ -115,6 +116,7 @@ function SectionCard({ icon: Icon, iconColor, label, content, editable, onChange
 export default function ContentGeneratorPage() {
   const { t, lang } = useI18n()
   const { activeCompany, products, segments, keyMessages } = useCompany()
+  const { apiKeyConfigured } = useAuth()
   const [searchParams] = useSearchParams()
 
   // Initial load from localStorage
@@ -143,6 +145,12 @@ export default function ContentGeneratorPage() {
   const [error, setError]             = useState('')
   const [saved, setSaved]             = useState(false)
   const [editable, setEditable]       = useState(false)
+
+  // ── Hook scorer state ─────────────────────────────────────────────────────
+  type HookScore = { scrollStop: 'Weak' | 'Good' | 'Strong'; clarity: 'Weak' | 'Good' | 'Strong'; intrigue: 'Weak' | 'Good' | 'Strong'; suggestion: string }
+  const [hookScore, setHookScore]       = useState<HookScore | null>(null)
+  const [hookScoring, setHookScoring]   = useState(false)
+  const scoredContentRef                = useRef<string>('')
 
   useEffect(() => {
     if (!post?.visualIdea) return
@@ -265,6 +273,39 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
 
   const channelMeta = CHANNEL_MAP[channel]
   const hasOutput = !!post
+
+  // ── Hook scorer — fires automatically 600ms after generation completes ────
+  useEffect(() => {
+    if (!post?.content || !apiKeyConfigured) { setHookScore(null); return }
+    const hook = post.content.split('\n').find(l => l.trim().length > 0) ?? ''
+    if (!hook || scoredContentRef.current === hook) return
+
+    const timer = setTimeout(async () => {
+      setHookScoring(true)
+      try {
+        type ScoreResult = { scrollStop: string; clarity: string; intrigue: string; suggestion: string }
+        const result = await callGroqJSON<ScoreResult>('', [
+          {
+            role: 'system',
+            content: `You are a social media hook analyst. Score this hook on 3 axes. Return JSON exactly: {"scrollStop":"Weak|Good|Strong","clarity":"Weak|Good|Strong","intrigue":"Weak|Good|Strong","suggestion":"one concrete improvement in max 15 words"}. Be honest and strict — most hooks are Weak or Good, Strong is rare.`,
+          },
+          { role: 'user', content: `Hook: "${hook}"\nChannel: ${CHANNEL_MAP[channel]?.label ?? channel}\nTone: ${tone}` },
+        ], { temperature: 0.2, max_tokens: 150, requiredKeys: ['scrollStop', 'clarity', 'intrigue', 'suggestion'] })
+
+        const valid = ['Weak', 'Good', 'Strong']
+        if (valid.includes(result.scrollStop) && valid.includes(result.clarity) && valid.includes(result.intrigue) && result.suggestion) {
+          setHookScore(result as HookScore)
+          scoredContentRef.current = hook
+        }
+      } catch {
+        // Silently fail — non-critical
+      } finally {
+        setHookScoring(false)
+      }
+    }, 600)
+
+    return () => clearTimeout(timer)
+  }, [post?.content, apiKeyConfigured]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex flex-col p-4 sm:p-6 gap-4">
@@ -472,80 +513,128 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
 
         {/* Post output */}
         {!loading && post && (
-          <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4 w-full h-full">
-            
-            {/* Left Card: Text Content */}
-            <SectionCard
-              icon={FileText} iconColor="text-blue-500"
-              label={SECTION_LABELS.content[lang]} content={post.content} editable={editable}
-              onChange={val => setPost(prev => prev ? { ...prev, content: val } : prev)}
-            />
+          <div className="flex flex-col gap-4 w-full h-full">
+            {/* Grid: left = text, right = image */}
+            <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4 flex-1 min-h-0">
 
-            {/* Right Card: AI Image Generator */}
-            <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 flex flex-col gap-3 h-full overflow-hidden hover:border-violet-200 dark:hover:border-violet-800 transition-colors">
-              <div className="flex items-center gap-2 shrink-0">
-                <div className="w-7 h-7 rounded-lg bg-[var(--color-surface-alt)] flex items-center justify-center text-cyan-500">
-                  <Camera className="w-3.5 h-3.5" />
+              {/* Left Card: Text Content */}
+              <SectionCard
+                icon={FileText} iconColor="text-blue-500"
+                label={SECTION_LABELS.content[lang]} content={post.content} editable={editable}
+                onChange={val => setPost(prev => prev ? { ...prev, content: val } : prev)}
+              />
+
+              {/* Right Card: AI Image Generator */}
+              <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 flex flex-col gap-3 h-full overflow-hidden hover:border-violet-200 dark:hover:border-violet-800 transition-colors">
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="w-7 h-7 rounded-lg bg-[var(--color-surface-alt)] flex items-center justify-center text-cyan-500">
+                    <Camera className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider">{SECTION_LABELS.visualIdea[lang]}</span>
                 </div>
-                <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider">{SECTION_LABELS.visualIdea[lang]}</span>
-              </div>
-              
-              <div className="flex gap-2">
-                <textarea 
-                  value={post.visualIdea}
-                  onChange={e => setPost(prev => prev ? { ...prev, visualIdea: e.target.value } : prev)}
-                  placeholder={lang === 'fr' ? 'Prompt pour l\'image...' : 'Image prompt...'}
-                  className="w-full h-[60px] text-xs text-[var(--color-text)] bg-[var(--color-surface-alt)] rounded-lg px-3 py-2 resize-none outline-none focus:ring-2 focus:ring-cyan-500 leading-relaxed border border-[var(--color-border)]"
-                />
-                <button 
-                  onClick={() => setImageSeed(Date.now())}
-                  className="px-3 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-200 dark:border-cyan-800 transition-colors flex flex-col items-center justify-center gap-1 shrink-0"
-                  title={lang === 'fr' ? 'Générer une nouvelle image' : 'Generate new image'}
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  <span className="text-[9px] font-bold">Retry</span>
-                </button>
-              </div>
+                <div className="flex gap-2">
+                  <textarea
+                    value={post.visualIdea}
+                    onChange={e => setPost(prev => prev ? { ...prev, visualIdea: e.target.value } : prev)}
+                    placeholder={lang === 'fr' ? 'Prompt pour l\'image...' : 'Image prompt...'}
+                    className="w-full h-[60px] text-xs text-[var(--color-text)] bg-[var(--color-surface-alt)] rounded-lg px-3 py-2 resize-none outline-none focus:ring-2 focus:ring-cyan-500 leading-relaxed border border-[var(--color-border)]"
+                  />
+                  <button
+                    onClick={() => setImageSeed(Date.now())}
+                    className="px-3 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-200 dark:border-cyan-800 transition-colors flex flex-col items-center justify-center gap-1 shrink-0"
+                    title={lang === 'fr' ? 'Générer une nouvelle image' : 'Generate new image'}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    <span className="text-[9px] font-bold">Retry</span>
+                  </button>
+                </div>
+                <div className="flex-1 min-h-[200px] w-full bg-[var(--color-surface-alt)] rounded-xl border border-[var(--color-border)] overflow-hidden flex items-center justify-center relative group">
+                  {generatingImage && (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[var(--color-surface-alt)]/80 backdrop-blur-sm">
+                      <RefreshCw className="w-8 h-8 text-cyan-500 animate-spin mb-3" />
+                      <p className="text-xs font-semibold text-cyan-600 dark:text-cyan-400 animate-pulse">
+                        {lang === 'fr' ? 'Génération de haute qualité...' : 'Generating high quality image...'}
+                      </p>
+                    </div>
+                  )}
+                  {post.visualIdea.trim() ? (
+                    <>
+                      <img
+                        src={import.meta.env.VITE_HF_ACCESS_TOKEN && hfImageUrl ? hfImageUrl : `https://image.pollinations.ai/prompt/${encodeURIComponent(post.visualIdea.replace(/\n/g, ' ').trim().substring(0, 800))}?width=1024&height=1024&nologo=true&seed=${imageSeed}`}
+                        alt="AI Generated Visual"
+                        className={cn("w-full h-full object-cover transition-opacity duration-300", generatingImage ? "opacity-30" : "opacity-100")}
+                        loading="lazy"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = `https://pollinations.ai/p/${encodeURIComponent(post.visualIdea.replace(/[^a-zA-Z0-9 ]/g, '').trim().substring(0, 100))}?width=1024&height=1024&nologo=true&seed=${imageSeed}`
+                        }}
+                      />
+                      {!generatingImage && (
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white p-4 text-center pointer-events-none">
+                          <Camera className="w-6 h-6 mb-2 opacity-80" />
+                          <p className="text-xs font-semibold">{lang === 'fr' ? 'Clic droit pour sauvegarder' : 'Right click to save'}</p>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-xs text-[var(--color-text-muted)] text-center p-4">
+                      {lang === 'fr' ? 'Entrez un prompt pour générer.' : 'Enter a prompt to generate.'}
+                    </div>
+                  )}
+                </div>
+              </div>{/* end right card */}
 
-              <div className="flex-1 min-h-[200px] w-full bg-[var(--color-surface-alt)] rounded-xl border border-[var(--color-border)] overflow-hidden flex items-center justify-center relative group">
-                {generatingImage && (
-                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[var(--color-surface-alt)]/80 backdrop-blur-sm">
-                    <RefreshCw className="w-8 h-8 text-cyan-500 animate-spin mb-3" />
-                    <p className="text-xs font-semibold text-cyan-600 dark:text-cyan-400 animate-pulse">
-                      {lang === 'fr' ? 'Génération de haute qualité...' : 'Generating high quality image...'}
+            </div>{/* end grid */}
+
+            {/* ── Hook scorer ── */}
+            {(hookScoring || hookScore) && (
+              <div className="w-full shrink-0 flex items-start gap-3 px-4 py-3 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800">
+                <div className="w-6 h-6 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
+                  {hookScoring
+                    ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
+                    : <Wand2 className="w-3.5 h-3.5 text-white" />
+                  }
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-1.5">
+                    {lang === 'fr' ? 'Analyse de votre accroche' : 'Hook analysis'}
+                  </p>
+                  {hookScoring && (
+                    <p className="text-xs text-[var(--color-text-muted)]">
+                      {lang === 'fr' ? 'Analyse en cours…' : 'Scoring your hook…'}
                     </p>
-                  </div>
-                )}
-                
-                {post.visualIdea.trim() ? (
-                  <>
-                    <img 
-                      src={import.meta.env.VITE_HF_ACCESS_TOKEN && hfImageUrl ? hfImageUrl : `https://image.pollinations.ai/prompt/${encodeURIComponent(post.visualIdea.replace(/\n/g, ' ').trim().substring(0, 800))}?width=1024&height=1024&nologo=true&seed=${imageSeed}`} 
-                      alt="AI Generated Visual" 
-                      className={cn("w-full h-full object-cover transition-opacity duration-300", generatingImage ? "opacity-30" : "opacity-100")}
-                      loading="lazy"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = `https://pollinations.ai/p/${encodeURIComponent(post.visualIdea.replace(/[^a-zA-Z0-9 ]/g, '').trim().substring(0, 100))}?width=1024&height=1024&nologo=true&seed=${imageSeed}`
-                      }}
-                    />
-                    {!generatingImage && (
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white p-4 text-center pointer-events-none">
-                        <Camera className="w-6 h-6 mb-2 opacity-80" />
-                        <p className="text-xs font-semibold">{lang === 'fr' ? 'Clic droit pour sauvegarder' : 'Right click to save'}</p>
+                  )}
+                  {!hookScoring && hookScore && (
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap gap-2">
+                        {([
+                          { key: 'scrollStop', label: lang === 'fr' ? 'Accroche scroll' : 'Scroll-stop' },
+                          { key: 'clarity',    label: lang === 'fr' ? 'Clarté' : 'Clarity' },
+                          { key: 'intrigue',   label: lang === 'fr' ? 'Intrigue' : 'Intrigue' },
+                        ] as const).map(({ key, label }) => {
+                          const val = hookScore[key]
+                          const color = val === 'Strong' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+                            : val === 'Good' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800'
+                          return (
+                            <span key={key} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-bold uppercase ${color}`}>
+                              {val === 'Strong' ? '✓' : val === 'Good' ? '~' : '✗'} {label}: {val}
+                            </span>
+                          )
+                        })}
                       </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="text-xs text-[var(--color-text-muted)] text-center p-4">
-                    {lang === 'fr' ? 'Entrez un prompt pour générer.' : 'Enter a prompt to generate.'}
-                  </div>
-                )}
+                      <p className="text-xs text-indigo-700 dark:text-indigo-300 font-medium flex items-start gap-1.5">
+                        <span className="shrink-0 mt-0.5">💡</span>
+                        <span>{hookScore.suggestion}</span>
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
+            )}{/* end hook scorer */}
 
-            </div>
           </div>
-        )}
-      </div>
+        )}{/* end post output */}
+      </div>{/* end output area */}
     </div>
   )
 }

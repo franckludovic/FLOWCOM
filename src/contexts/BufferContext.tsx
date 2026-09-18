@@ -1,37 +1,33 @@
 /**
  * BufferContext
  * ─────────────
- * Fetches org ID + channels ONCE when the app mounts (inside ProtectedRoute),
- * then caches them for the lifetime of the session.
+ * Fetches org ID + channels ONCE when the app mounts, caches for the session.
  *
- * Pages that need Buffer data (Studio, PublishingHistory, …) consume this
- * context instead of each making their own init requests.
- *
- * The only time a network call is made:
- *  • First mount (when token is present)
- *  • Explicit call to refreshChannels() by the user
+ * All Buffer API calls go through the Supabase Edge Function `buffer` which
+ * keeps BUFFER_API_KEY server-side. Works in dev AND production — no Vite proxy needed.
  */
 
 import {
   createContext, useContext, useState, useEffect, useCallback, type ReactNode
 } from 'react'
+import { supabase } from '@/lib/supabase'
 
 // ─── Shared Buffer query helper ───────────────────────────────────────────────
-const BUFFER_ENDPOINT = '/buffer-api/graphql'
-
-export async function bufferQuery(token: string, query: string, variables?: object) {
-  const res = await fetch(BUFFER_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ query, variables }),
+// _token param kept for call-site compatibility but is no longer used —
+// the Edge Function reads the key from Supabase secrets.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function bufferQuery(_token: string, query: string, variables?: object): Promise<any> {
+  const { data, error } = await supabase.functions.invoke('buffer', {
+    body: { query, variables },
   })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const json = await res.json()
-  if (json.errors) throw new Error(json.errors[0].message)
-  return json.data
+  if (error) {
+    const ctx = (error as { context?: { json?: () => Promise<{ error?: string }> } }).context
+    const details = ctx?.json ? await ctx.json().catch(() => null) : null
+    throw new Error(details?.error ?? error.message)
+  }
+  if (!data) throw new Error('Empty response from Buffer proxy')
+  if (data?.errors?.length) throw new Error(data.errors[0].message)
+  return data?.data ?? data
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -43,15 +39,10 @@ export interface BufferChannel {
 }
 
 interface BufferContextValue {
-  /** Resolved org ID — null until first fetch completes */
   orgId: string | null
-  /** All connected Buffer channels */
   channels: BufferChannel[]
-  /** True while the initial fetch is running */
   loading: boolean
-  /** Non-empty string if the fetch failed */
   error: string
-  /** Re-fetch org + channels (e.g. after connecting a new channel) */
   refreshChannels: () => void
 }
 
@@ -59,36 +50,31 @@ interface BufferContextValue {
 const BufferContext = createContext<BufferContextValue | null>(null)
 
 export function BufferProvider({ children }: { children: ReactNode }) {
-  const token = import.meta.env.VITE_BUFFER_API_KEY as string | undefined
+  // Token is no longer needed client-side — kept only so existing call sites
+  // that pass it as an argument don't need to change.
+  const token = import.meta.env.VITE_BUFFER_API_KEY as string | undefined ?? ''
 
   const [orgId, setOrgId]       = useState<string | null>(null)
   const [channels, setChannels] = useState<BufferChannel[]>([])
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
-  const [fetchKey, setFetchKey] = useState(0)  // increment to trigger a re-fetch
+  const [fetchKey, setFetchKey] = useState(0)
 
   const refreshChannels = useCallback(() => setFetchKey(k => k + 1), [])
 
   useEffect(() => {
-    if (!token) {
-      setError('Missing VITE_BUFFER_API_KEY in .env.local')
-      return
-    }
-
     let alive = true
     setLoading(true)
     setError('')
 
     ;(async () => {
       try {
-        // Step 1 — resolve org ID
         const acc = await bufferQuery(token, `{ account { organizations { id } } }`)
         const id: string | undefined = acc?.account?.organizations?.[0]?.id
         if (!id) throw new Error('No Buffer organization found.')
         if (!alive) return
         setOrgId(id)
 
-        // Step 2 — fetch channels
         const cd = await bufferQuery(
           token,
           `query Channels($input: ChannelsInput!) {
@@ -106,7 +92,7 @@ export function BufferProvider({ children }: { children: ReactNode }) {
     })()
 
     return () => { alive = false }
-  }, [token, fetchKey])  // fetchKey lets refreshChannels() retrigger this
+  }, [fetchKey]) // token intentionally omitted — it's static and the Edge Function owns it
 
   return (
     <BufferContext.Provider value={{ orgId, channels, loading, error, refreshChannels }}>

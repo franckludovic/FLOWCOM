@@ -1,8 +1,9 @@
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   CalendarDays, Sparkles, Trash2, ChevronLeft, ChevronRight, ChevronDown,
-  LayoutList, LayoutGrid, Zap, AlertCircle, FileText, Clapperboard, Image
+  LayoutList, LayoutGrid, Zap, AlertCircle, FileText, Clapperboard, Image,
+  Wand2, Loader2
 } from 'lucide-react'
 import {
   FaLinkedinIn, FaInstagram, FaTiktok, FaFacebookF,
@@ -10,6 +11,7 @@ import {
 } from 'react-icons/fa6'
 import { useI18n } from '@/contexts/I18nContext'
 import { useCompany } from '@/contexts/CompanyContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { callGroqJSON, buildGroqError } from '@/lib/groq'
 import { buildAiContext } from '@/lib/aiContext'
 import { cn } from '@/lib/utils'
@@ -143,6 +145,7 @@ function SkeletonTable({ count = 8, lang }: { count?: number; lang: 'fr' | 'en' 
 export default function CalendarPage() {
   const { t, lang } = useI18n()
   const { activeCompany, products, segments, keyMessages } = useCompany()
+  const { apiKeyConfigured } = useAuth()
   const navigate = useNavigate()
 
   const now = new Date()
@@ -163,6 +166,12 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(false)
   const [loadingItems, setLoadingItems] = useState(true)
   const [error, setError]     = useState('')
+
+  // ── AI gap analysis state ──────────────────────────────────────────────────
+  const [gapWarnings, setGapWarnings]       = useState<string[]>([])
+  const [gapLoading, setGapLoading]         = useState(false)
+  const [gapDismissed, setGapDismissed]     = useState(false)
+  const gapAnalysedKeyRef                   = useRef<string>('')
 
   useEffect(() => {
     let cancelled = false
@@ -282,6 +291,65 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
   const goGenerate  = (item: CalendarItem) => {
     navigate(`/content?${new URLSearchParams({ topic: item.topic, channel: item.channel, goal: item.goal, format: item.format }).toString()}`)
   }
+
+  // ── AI gap analysis — fires when monthItems changes and has ≥3 items ───────
+  useEffect(() => {
+    if (!apiKeyConfigured) return
+    if (monthItems.length < 3) { setGapWarnings([]); return }
+
+    // Use month+item-count+channel-set as a key so we only re-run when the plan changes
+    const key = `${mk}-${monthItems.length}-${[...new Set(monthItems.map(i => i.channel))].sort().join(',')}`
+    if (gapAnalysedKeyRef.current === key) return
+    gapAnalysedKeyRef.current = key
+    setGapDismissed(false)
+
+    const run = async () => {
+      setGapLoading(true)
+      setGapWarnings([])
+      try {
+        // Summarise the plan as text
+        const channelCounts = monthItems.reduce<Record<string, number>>((acc, i) => {
+          acc[i.channel] = (acc[i.channel] ?? 0) + 1; return acc
+        }, {})
+        const goalCounts = monthItems.reduce<Record<string, number>>((acc, i) => {
+          acc[i.goal] = (acc[i.goal] ?? 0) + 1; return acc
+        }, {})
+        const dates = [...new Set(monthItems.map(i => i.date))].sort()
+        const gaps: string[] = []
+        for (let d = 1; d < dates.length; d++) {
+          const diff = (new Date(dates[d]).getTime() - new Date(dates[d - 1]).getTime()) / 86400000
+          if (diff > 5) gaps.push(`${diff} days between ${dates[d - 1]} and ${dates[d]}`)
+        }
+
+        const planSummary = [
+          `Month: ${mk}, Total posts planned: ${monthItems.length}`,
+          `Channel distribution: ${Object.entries(channelCounts).map(([k, v]) => `${k}(${v})`).join(', ')}`,
+          `Goal distribution: ${Object.entries(goalCounts).map(([k, v]) => `${k}(${v})`).join(', ')}`,
+          gaps.length ? `Date gaps > 5 days: ${gaps.join('; ')}` : 'No large date gaps detected',
+          `Brand preferred channels: ${activeCompany?.channels ?? 'not set'}`,
+          `Brand publishing frequency: ${activeCompany?.frequency ?? 'not set'}`,
+        ].join('\n')
+
+        type GapResult = { warnings: string[] }
+        const result = await callGroqJSON<GapResult>('', [
+          {
+            role: 'system',
+            content: `You are an editorial calendar auditor. Analyze this month's content plan and identify real problems. Return JSON exactly: {"warnings":["string","string"]} — an array of 1 to 3 short warning strings (max 15 words each). Only flag real issues: publishing gaps > 5 days, channel imbalance vs brand preference, goals that are overrepresented or missing. If the plan is good, return {"warnings":[]}. Do not invent problems.`,
+          },
+          { role: 'user', content: planSummary },
+        ], { temperature: 0.2, max_tokens: 200, requiredKeys: ['warnings'] })
+
+        if (Array.isArray(result.warnings)) {
+          setGapWarnings(result.warnings.filter((w): w is string => typeof w === 'string').slice(0, 3))
+        }
+      } catch {
+        // Silently fail — gap analysis is non-critical
+      } finally {
+        setGapLoading(false)
+      }
+    }
+    run()
+  }, [monthItems, mk, apiKeyConfigured]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Grid helpers
   const itemsByDay = useMemo(() => {
@@ -521,6 +589,47 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
               {stats[s]} {STATUS_LABEL[s][lang]}
             </span>
           ))}
+        </div>
+      )}
+
+      {/* ── AI gap warning banner ── */}
+      {!gapDismissed && monthItems.length >= 3 && !loading && (gapLoading || gapWarnings.length > 0) && (
+        <div className="shrink-0 flex items-start gap-3 px-4 py-3 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+          <div className="w-6 h-6 rounded-lg bg-amber-500 flex items-center justify-center shrink-0 mt-0.5">
+            {gapLoading
+              ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
+              : <Wand2 className="w-3.5 h-3.5 text-white" />
+            }
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 mb-1">
+              {lang === 'fr' ? 'Analyse IA du calendrier' : 'AI calendar check'}
+            </p>
+            {gapLoading && (
+              <p className="text-xs text-[var(--color-text-muted)]">
+                {lang === 'fr' ? 'Analyse du plan en cours…' : 'Checking your plan…'}
+              </p>
+            )}
+            {!gapLoading && gapWarnings.length > 0 && (
+              <ul className="space-y-1">
+                {gapWarnings.map((w, i) => (
+                  <li key={i} className="flex items-start gap-1.5 text-xs text-amber-800 dark:text-amber-300">
+                    <span className="shrink-0 mt-0.5">⚠</span>
+                    <span>{w}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {!gapLoading && gapWarnings.length > 0 && (
+            <button
+              onClick={() => setGapDismissed(true)}
+              className="shrink-0 text-amber-500 hover:text-amber-700 transition-colors"
+              title={lang === 'fr' ? 'Fermer' : 'Dismiss'}
+            >
+              <span className="text-sm leading-none">✕</span>
+            </button>
+          )}
         </div>
       )}
 

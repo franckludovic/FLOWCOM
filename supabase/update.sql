@@ -51,3 +51,19 @@ DROP POLICY IF EXISTS "Users manage own reports" ON public.weekly_reports;
 CREATE POLICY "Users manage own reports" ON public.weekly_reports
 	FOR ALL USING (EXISTS (SELECT 1 FROM public.companies c WHERE c.id = company_id AND c.user_id = auth.uid()))
 	WITH CHECK (EXISTS (SELECT 1 FROM public.companies c WHERE c.id = company_id AND c.user_id = auth.uid()));
+
+-- ─── CONTENT SCORES ──────────────────────────────────────────
+-- AI-generated quality scores for library items.
+-- Kept separate from library_items to avoid schema churn on the main table.
+create table if not exists public.content_scores (
+  id          uuid primary key default gen_random_uuid(),
+  company_id  uuid references public.companies(id) on delete cascade not null,
+  item_id     uuid not null,   -- references library_items.id (soft ref — no FK so deletes don't cascade errors)
+  score       text not null,   -- 'ready' | 'good' | 'needs-work'
+  scored_at   timestamptz not null default now(),
+  unique(company_id, item_id)
+);
+
+alter table public.content_scores enable row level security;
+create policy "Users manage own content scores" on public.content_scores for all
+  using (exists (select 1 from public.companies c where c.id = company_id and c.user_id = auth.uid()));

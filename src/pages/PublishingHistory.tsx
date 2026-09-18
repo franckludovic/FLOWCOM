@@ -1,10 +1,14 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import {
   History, Search, ExternalLink, RefreshCw, ChevronDown, ChevronUp,
-  CalendarDays, Filter, X, AlertCircle, Loader2, Globe
+  CalendarDays, Filter, X, AlertCircle, Loader2, Globe, Sparkles, Wand2
 } from 'lucide-react'
 import { useI18n } from '@/contexts/I18nContext'
+import { useCompany } from '@/contexts/CompanyContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { useBuffer, bufferQuery } from '@/contexts/BufferContext'
+import { callGroqJSON, buildGroqError } from '@/lib/groq'
+import { buildAiContext } from '@/lib/aiContext'
 import { cn } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -237,6 +241,8 @@ function PostCard({ post, lang }: { post: BufferPost; lang: string }) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function PublishingHistoryPage() {
   const { lang } = useI18n()
+  const { activeCompany, products, segments, keyMessages } = useCompany()
+  const { apiKeyConfigured } = useAuth()
   const bufferToken = import.meta.env.VITE_BUFFER_API_KEY as string | undefined
   // Channels + orgId come from the shared context — already fetched, no extra request
   const { channels, orgId, error: bufferCtxError } = useBuffer()
@@ -247,6 +253,13 @@ export default function PublishingHistoryPage() {
   const [hasNextPage, setHasNextPage] = useState(false)
   const [endCursor, setEndCursor] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
+
+  // AI digest state
+  const [digest, setDigest]             = useState<{ bullets: string[]; recommendation: string } | null>(null)
+  const [digestLoading, setDigestLoading] = useState(false)
+  const [digestError, setDigestError]   = useState('')
+  const [digestOpen, setDigestOpen]     = useState(true)
+  const digestFiredRef                  = useRef(false)
 
   // Show context-level Buffer errors (e.g. bad API key)
   useEffect(() => { if (bufferCtxError) setError(bufferCtxError) }, [bufferCtxError])
@@ -332,6 +345,45 @@ export default function PublishingHistoryPage() {
   }, [orgId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadMore = useCallback(() => fetchPosts(false), [fetchPosts])
+
+  // ── AI digest — fires once when posts first load (≥5 posts needed) ────────
+  useEffect(() => {
+    if (digestFiredRef.current) return
+    if (allPosts.length < 5) return
+    if (!apiKeyConfigured) return
+    digestFiredRef.current = true
+
+    const run = async () => {
+      setDigestLoading(true)
+      setDigestError('')
+      try {
+        // Take up to 15 most recent posts as text samples
+        const sample = allPosts.slice(0, 15).map((p, i) =>
+          `Post ${i + 1} [${p.channelService} · ${p.sentAt ? new Date(p.sentAt).toLocaleDateString() : '?'}]: ${p.text.slice(0, 200)}`
+        ).join('\n\n')
+
+        const ctx = buildAiContext({ company: activeCompany, products, segments, keyMessages })
+
+        const result = await callGroqJSON<{ bullets: string[]; recommendation: string }>('', [
+          {
+            role: 'system',
+            content: `You are a social media analyst. Analyze these recent published posts and identify patterns. Return JSON exactly matching: {"bullets":["string","string","string"],"recommendation":"string"}. The bullets array must have exactly 3 short observations (max 12 words each) about: topics covered, channels used, and content style/format patterns. The recommendation must be one concrete actionable sentence (max 20 words). Base everything only on the posts provided — do not invent data.\nBrand context:\n${ctx}`,
+          },
+          { role: 'user', content: `Analyze these ${allPosts.slice(0, 15).length} recent published posts:\n\n${sample}` },
+        ], { temperature: 0.3, max_tokens: 300, requiredKeys: ['bullets', 'recommendation'] })
+
+        if (Array.isArray(result.bullets) && result.bullets.length === 3 && result.recommendation) {
+          setDigest(result)
+        }
+      } catch (e: any) {
+        const key = buildGroqError(e)
+        if (key !== 'error.noKey') setDigestError(lang === 'fr' ? 'Analyse IA indisponible.' : 'AI analysis unavailable.')
+      } finally {
+        setDigestLoading(false)
+      }
+    }
+    run()
+  }, [allPosts.length, apiKeyConfigured]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Channels that actually appear in fetched posts (for filter chips) ─────
   const channelsWithPosts = useMemo(() => {
@@ -429,6 +481,61 @@ export default function PublishingHistoryPage() {
               <span className="text-xs text-[var(--color-text-muted)]">{s.label}</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* AI digest panel */}
+      {(digestLoading || digest || digestError) && !loading && (
+        <div className="shrink-0 rounded-2xl border border-purple-200 dark:border-purple-900 bg-purple-50/60 dark:bg-purple-950/20 overflow-hidden">
+          <button
+            onClick={() => setDigestOpen(o => !o)}
+            className="w-full flex items-center gap-3 px-4 py-3 text-left"
+          >
+            <div className="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center shrink-0">
+              {digestLoading
+                ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
+                : <Sparkles className="w-3.5 h-3.5 text-white" />
+              }
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
+                {lang === 'fr' ? 'Analyse IA de vos publications' : 'AI digest of your posts'}
+              </p>
+              {digestLoading && (
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  {lang === 'fr' ? 'Analyse en cours…' : 'Analysing your posts…'}
+                </p>
+              )}
+            </div>
+            {!digestLoading && (digest || digestError) && (
+              digestOpen
+                ? <ChevronUp className="w-4 h-4 text-purple-500 shrink-0" />
+                : <ChevronDown className="w-4 h-4 text-purple-500 shrink-0" />
+            )}
+          </button>
+
+          {digestOpen && !digestLoading && digest && (
+            <div className="px-4 pb-4 space-y-3">
+              <ul className="space-y-1.5">
+                {digest.bullets.map((bullet, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-[var(--color-text)]">
+                    <span className="text-purple-500 shrink-0 mt-0.5">✦</span>
+                    <span>{bullet}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="flex items-start gap-2 p-3 rounded-xl bg-purple-100/60 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800">
+                <Wand2 className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0 mt-0.5" />
+                <p className="text-xs font-semibold text-purple-700 dark:text-purple-300">
+                  {digest.recommendation}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {digestOpen && digestError && (
+            <p className="px-4 pb-3 text-xs text-[var(--color-text-muted)] italic">{digestError}</p>
+          )}
         </div>
       )}
 
