@@ -474,7 +474,7 @@ export default function StudioPage() {
   const [libraryItems, setLibraryItems]     = useState<any[]>([])
 
   // Pre-publish AI check
-  const [preCheckModal, setPreCheckModal]   = useState<{ issues: string[] } | null>(null)
+  const [preCheckModal, setPreCheckModal]   = useState<{ issues_fr: string[]; issues_en: string[] } | null>(null)
   const [preCheckLoading, setPreCheckLoading] = useState(false)
 
   // Scheduling — empty string means "publish now"
@@ -607,24 +607,23 @@ export default function StudioPage() {
       const result = await callGroq('', [
         {
           role: 'system',
-          content: `You are a social media publishing assistant doing a quick pre-flight check. Analyze this post and return ONLY a JSON array of issues (0–2 strings, max 15 words each): ["issue1","issue2"]. Flag ONLY real problems: missing CTA when the goal is conversion, text significantly over the ${charLimit}-char limit for ${preset}, tone clearly mismatched with the brand. If the post is fine, return []. Do not invent issues. Brand context:\n${ctx}\nRespond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`,
+          content: `You are a social media publishing assistant doing a quick pre-flight check. Analyze this post and return ONLY a JSON object: {"issues_fr":["string"],"issues_en":["string"]} with 0–2 issues each (max 15 words per issue). issues_fr in French, issues_en in English. Flag ONLY real problems: missing CTA when the goal is conversion, text significantly over the ${charLimit}-char limit for ${preset}, tone clearly mismatched with the brand. If the post is fine, return {"issues_fr":[],"issues_en":[]}. Do not invent issues. Brand context:\n${ctx}`,
         },
         { role: 'user', content: `Post text (${fullText.length} chars):\n${fullText.slice(0, 600)}\n\nTarget channels: ${selectedServices}\nPreset: ${preset}` },
-      ], { temperature: 0.1, max_tokens: 100 })
+      ], { temperature: 0.1, max_tokens: 150 })
 
-      let issues: string[] = []
+      let issues_fr: string[] = []
+      let issues_en: string[] = []
       try {
         const parsed = JSON.parse(result.trim())
-        if (Array.isArray(parsed)) {
-          issues = parsed.filter((s): s is string => typeof s === 'string').slice(0, 2)
-        }
-      } catch { /* ignore parse error — treat as no issues */ }
+        if (Array.isArray(parsed.issues_fr)) issues_fr = parsed.issues_fr.filter((s: unknown): s is string => typeof s === 'string').slice(0, 2)
+        if (Array.isArray(parsed.issues_en)) issues_en = parsed.issues_en.filter((s: unknown): s is string => typeof s === 'string').slice(0, 2)
+      } catch { /* treat as no issues */ }
 
-      if (issues.length === 0) {
-        // Clean bill — publish directly without showing modal
+      if (issues_fr.length === 0 && issues_en.length === 0) {
         handlePublish()
       } else {
-        setPreCheckModal({ issues })
+        setPreCheckModal({ issues_fr, issues_en })
       }
     } catch {
       // AI check failed — don't block publishing
@@ -779,7 +778,7 @@ export default function StudioPage() {
               </div>
             </div>
             <ul className="space-y-2 mb-5">
-              {preCheckModal.issues.map((issue, i) => (
+              {(lang === 'fr' ? preCheckModal.issues_fr : preCheckModal.issues_en).map((issue, i) => (
                 <li key={i} className="flex items-start gap-2 text-sm text-[var(--color-text)]">
                   <span className="text-amber-500 shrink-0 mt-0.5">⚠</span>
                   <span>{issue}</span>

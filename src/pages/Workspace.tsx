@@ -9,9 +9,12 @@ import { buildAiContext } from '@/lib/aiContext'
 import { supabase } from '@/lib/supabase'
 
 interface WorkspaceActivity {
-  title: string
-  reason: string
-  action: string
+  title_fr: string
+  title_en: string
+  reason_fr: string
+  reason_en: string
+  action_fr: string
+  action_en: string
   route: string
   step?: number
   priority: 'high' | 'medium' | 'low'
@@ -105,13 +108,15 @@ export default function WorkspacePage() {
       const result = await callGroqJSON<{ activities: WorkspaceActivity[] }>('', [
         {
           role: 'system',
-          content: `You are FlowCom's proactive communication strategist. Turn the live workspace signals into three useful, non-duplicated next actions. Prioritize missing foundations before optimization. Return only JSON matching: {"activities":[{"title":"short string","reason":"one sentence grounded in a signal","action":"short button label","route":"/content or /calendar or /roadmap or /memory or /onboarding or /studio or /library or /publishing-history or /report","step":"number required only when route is /onboarding: 1 for company info, 2 for brand identity, 3 for products, 4 for audience, 5 for communication","priority":"high or medium or low"}]}. For onboarding actions, always include the exact step. Use the publishing and draft signals to suggest concrete actions: if drafts are stale suggest publishing them via /studio, if no report was filed suggest /report, if no posts were published in 30 days suggest /studio. Do not invent facts.\nCompany context:\n${buildAiContext({ company: activeCompany, products, segments, keyMessages })}\nLive signals:\n${signals}\nRespond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
+          content: `You are FlowCom's proactive communication strategist. Turn the live workspace signals into three useful, non-duplicated next actions. Prioritize missing foundations before optimization. Return only JSON matching this exact schema — every string field must be provided in BOTH French and English: {"activities":[{"title_fr":"string","title_en":"string","reason_fr":"one sentence in French","reason_en":"one sentence in English","action_fr":"short button label in French","action_en":"short button label in English","route":"/content or /calendar or /roadmap or /memory or /onboarding or /studio or /library or /publishing-history or /report","step":"number required only when route is /onboarding: 1 for company info, 2 for brand identity, 3 for products, 4 for audience, 5 for communication","priority":"high or medium or low"}]}. For onboarding actions, always include the exact step. Use the publishing and draft signals to suggest concrete actions. Do not invent facts.\nCompany context:\n${buildAiContext({ company: activeCompany, products, segments, keyMessages })}\nLive signals:\n${signals}`
         },
         { role: 'user', content: 'What are the three most useful next actions right now?' }
-      ], { temperature: 0.4, max_tokens: 600, requiredKeys: ['activities'] })
+      ], { temperature: 0.4, max_tokens: 900, requiredKeys: ['activities'] })
       const validRoutes = ['/content', '/calendar', '/roadmap', '/memory', '/onboarding', '/studio', '/library', '/publishing-history', '/report']
       const safeActivities = (result.activities ?? []).filter(activity =>
-        activity.title && activity.reason && activity.action && validRoutes.includes(activity.route) &&
+        activity.title_fr && activity.title_en && activity.reason_fr && activity.reason_en &&
+        activity.action_fr && activity.action_en &&
+        validRoutes.includes(activity.route) &&
         (activity.route !== '/onboarding' || Number.isInteger(activity.step) && activity.step! >= 1 && activity.step! <= 5)
       ).slice(0, 3).map(activity => ({
         ...activity,
@@ -163,11 +168,11 @@ export default function WorkspacePage() {
                 <Sparkles className="w-5 h-5 text-white" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">AI next move</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">{lang === 'fr' ? 'Prochaine étape IA' : 'AI next move'}</p>
                 {briefLoading ? (
-                  <p className="mt-1 text-sm text-[var(--color-text-muted)]">Preparing a recommendation...</p>
+                  <p className="mt-1 text-sm text-[var(--color-text-muted)]">{lang === 'fr' ? 'Préparation des recommandations…' : 'Preparing a recommendation...'}</p>
                 ) : activities.length > 0 ? (
-                  <h2 className="mt-1 text-lg font-bold text-[var(--color-text)]">Your next best moves</h2>
+                  <h2 className="mt-1 text-lg font-bold text-[var(--color-text)]">{lang === 'fr' ? 'Vos prochaines actions prioritaires' : 'Your next best moves'}</h2>
                 ) : briefError ? (
                   <p className="mt-1 text-sm text-red-500">{briefError}</p>
                 ) : null}
@@ -187,20 +192,20 @@ export default function WorkspacePage() {
             <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
               {activities.map((activity, index) => (
                 <button
-                  key={`${activity.title}-${index}`}
+                  key={`${activity.title_en}-${index}`}
                   type="button"
                   onClick={() => navigate(activity.route)}
                   className="flex flex-col items-start gap-3 p-4 rounded-xl bg-[var(--color-surface)] border border-indigo-100 dark:border-indigo-900 text-left hover:border-indigo-400 hover:shadow-sm transition-all"
                 >
                   <div className="flex items-center justify-between w-full gap-2">
                     <span className={`text-[10px] font-bold uppercase tracking-wider ${activity.priority === 'high' ? 'text-rose-500' : activity.priority === 'medium' ? 'text-amber-500' : 'text-indigo-500'}`}>
-                      {activity.priority} priority
+                      {lang === 'fr' ? (activity.priority === 'high' ? 'Priorité haute' : activity.priority === 'medium' ? 'Priorité moyenne' : 'Priorité basse') : `${activity.priority} priority`}
                     </span>
                     <ArrowRight className="w-4 h-4 text-indigo-500 shrink-0" />
                   </div>
-                  <span className="font-semibold text-sm text-[var(--color-text)]">{activity.title}</span>
-                  <span className="text-xs leading-relaxed text-[var(--color-text-muted)]">{activity.reason}</span>
-                  <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">{activity.action}</span>
+                  <span className="font-semibold text-sm text-[var(--color-text)]">{lang === 'fr' ? activity.title_fr : activity.title_en}</span>
+                  <span className="text-xs leading-relaxed text-[var(--color-text-muted)]">{lang === 'fr' ? activity.reason_fr : activity.reason_en}</span>
+                  <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">{lang === 'fr' ? activity.action_fr : activity.action_en}</span>
                 </button>
               ))}
             </div>

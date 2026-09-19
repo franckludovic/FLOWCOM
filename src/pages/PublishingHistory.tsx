@@ -255,7 +255,7 @@ export default function PublishingHistoryPage() {
   const [loadingMore, setLoadingMore] = useState(false)
 
   // AI digest state
-  const [digest, setDigest]             = useState<{ bullets: string[]; recommendation: string } | null>(null)
+  const [digest, setDigest]             = useState<{ bullets_fr: string[]; bullets_en: string[]; recommendation_fr: string; recommendation_en: string } | null>(null)
   const [digestLoading, setDigestLoading] = useState(false)
   const [digestError, setDigestError]   = useState('')
   const [digestOpen, setDigestOpen]     = useState(true)
@@ -364,15 +364,15 @@ export default function PublishingHistoryPage() {
 
         const ctx = buildAiContext({ company: activeCompany, products, segments, keyMessages })
 
-        const result = await callGroqJSON<{ bullets: string[]; recommendation: string }>('', [
+        const result = await callGroqJSON<{ bullets_fr: string[]; bullets_en: string[]; recommendation_fr: string; recommendation_en: string }>('', [
           {
             role: 'system',
-            content: `You are a social media analyst. Analyze these recent published posts and identify patterns. Return JSON exactly matching: {"bullets":["string","string","string"],"recommendation":"string"}. The bullets array must have exactly 3 short observations (max 12 words each) about: topics covered, channels used, and content style/format patterns. The recommendation must be one concrete actionable sentence (max 20 words). Base everything only on the posts provided — do not invent data.\nBrand context:\n${ctx}\nRespond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`,
+            content: `You are a social media analyst. Analyze these recent published posts and identify patterns. Return JSON exactly matching: {"bullets_fr":["string","string","string"],"bullets_en":["string","string","string"],"recommendation_fr":"string","recommendation_en":"string"}. Each bullets array must have exactly 3 short observations (max 12 words each) about: topics covered, channels used, and content style/format patterns — written in French for bullets_fr and English for bullets_en. The recommendation must be one concrete actionable sentence (max 20 words) in each language. Base everything only on the posts provided — do not invent data.\nBrand context:\n${ctx}`,
           },
           { role: 'user', content: `Analyze these ${allPosts.slice(0, 15).length} recent published posts:\n\n${sample}` },
-        ], { temperature: 0.3, max_tokens: 300, requiredKeys: ['bullets', 'recommendation'] })
+        ], { temperature: 0.3, max_tokens: 500, requiredKeys: ['bullets_fr', 'bullets_en', 'recommendation_fr', 'recommendation_en'] })
 
-        if (Array.isArray(result.bullets) && result.bullets.length === 3 && result.recommendation) {
+        if (Array.isArray(result.bullets_fr) && result.bullets_fr.length === 3 && result.recommendation_fr) {
           setDigest(result)
         }
       } catch (e: any) {
@@ -517,7 +517,7 @@ export default function PublishingHistoryPage() {
           {digestOpen && !digestLoading && digest && (
             <div className="px-4 pb-4 space-y-3">
               <ul className="space-y-1.5">
-                {digest.bullets.map((bullet, i) => (
+                {(lang === 'fr' ? digest.bullets_fr : digest.bullets_en).map((bullet, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm text-[var(--color-text)]">
                     <span className="text-purple-500 shrink-0 mt-0.5">✦</span>
                     <span>{bullet}</span>
@@ -527,7 +527,7 @@ export default function PublishingHistoryPage() {
               <div className="flex items-start gap-2 p-3 rounded-xl bg-purple-100/60 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800">
                 <Wand2 className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0 mt-0.5" />
                 <p className="text-xs font-semibold text-purple-700 dark:text-purple-300">
-                  {digest.recommendation}
+                  {lang === 'fr' ? digest.recommendation_fr : digest.recommendation_en}
                 </p>
               </div>
             </div>

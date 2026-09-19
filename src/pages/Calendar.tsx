@@ -168,7 +168,7 @@ export default function CalendarPage() {
   const [error, setError]     = useState('')
 
   // ── AI gap analysis state ──────────────────────────────────────────────────
-  const [gapWarnings, setGapWarnings]       = useState<string[]>([])
+  const [gapWarnings, setGapWarnings]       = useState<{ fr: string[]; en: string[] } | null>(null)
   const [gapLoading, setGapLoading]         = useState(false)
   const [gapDismissed, setGapDismissed]     = useState(false)
   const gapAnalysedKeyRef                   = useRef<string>('')
@@ -295,7 +295,7 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
   // ── AI gap analysis — fires when monthItems changes and has ≥3 items ───────
   useEffect(() => {
     if (!apiKeyConfigured) return
-    if (monthItems.length < 3) { setGapWarnings([]); return }
+    if (monthItems.length < 3) { setGapWarnings(null); return }
 
     // Use month+item-count+channel-set as a key so we only re-run when the plan changes
     const key = `${mk}-${monthItems.length}-${[...new Set(monthItems.map(i => i.channel))].sort().join(',')}`
@@ -305,7 +305,7 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
 
     const run = async () => {
       setGapLoading(true)
-      setGapWarnings([])
+      setGapWarnings(null)
       try {
         // Summarise the plan as text
         const channelCounts = monthItems.reduce<Record<string, number>>((acc, i) => {
@@ -330,17 +330,20 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
           `Brand publishing frequency: ${activeCompany?.frequency ?? 'not set'}`,
         ].join('\n')
 
-        type GapResult = { warnings: string[] }
+        type GapResult = { warnings_fr: string[]; warnings_en: string[] }
         const result = await callGroqJSON<GapResult>('', [
           {
             role: 'system',
-            content: `You are an editorial calendar auditor. Analyze this month's content plan and identify real problems. Return JSON exactly: {"warnings":["string","string"]} — an array of 1 to 3 short warning strings (max 15 words each). Only flag real issues: publishing gaps > 5 days, channel imbalance vs brand preference, goals that are overrepresented or missing. If the plan is good, return {"warnings":[]}. Do not invent problems. Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`,
+            content: `You are an editorial calendar auditor. Analyze this month's content plan and identify real problems. Return JSON exactly: {"warnings_fr":["string"],"warnings_en":["string"]} — each array contains 1 to 3 short warning strings (max 15 words each) in French for warnings_fr and English for warnings_en. Only flag real issues: publishing gaps > 5 days, channel imbalance vs brand preference, goals that are overrepresented or missing. If the plan is good, return {"warnings_fr":[],"warnings_en":[]}. Do not invent problems.`,
           },
           { role: 'user', content: planSummary },
-        ], { temperature: 0.2, max_tokens: 200, requiredKeys: ['warnings'] })
+        ], { temperature: 0.2, max_tokens: 300, requiredKeys: ['warnings_fr', 'warnings_en'] })
 
-        if (Array.isArray(result.warnings)) {
-          setGapWarnings(result.warnings.filter((w): w is string => typeof w === 'string').slice(0, 3))
+        if (Array.isArray(result.warnings_fr)) {
+          setGapWarnings({
+            fr: result.warnings_fr.filter((w): w is string => typeof w === 'string').slice(0, 3),
+            en: result.warnings_en.filter((w): w is string => typeof w === 'string').slice(0, 3),
+          })
         }
       } catch {
         // Silently fail — gap analysis is non-critical
@@ -593,7 +596,7 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
       )}
 
       {/* ── AI gap warning banner ── */}
-      {!gapDismissed && monthItems.length >= 3 && !loading && (gapLoading || gapWarnings.length > 0) && (
+      {!gapDismissed && monthItems.length >= 3 && !loading && (gapLoading || (gapWarnings && (lang === 'fr' ? gapWarnings.fr : gapWarnings.en).length > 0)) && (
         <div className="shrink-0 flex items-start gap-3 px-4 py-3 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
           <div className="w-6 h-6 rounded-lg bg-amber-500 flex items-center justify-center shrink-0 mt-0.5">
             {gapLoading
@@ -610,9 +613,9 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
                 {lang === 'fr' ? 'Analyse du plan en cours…' : 'Checking your plan…'}
               </p>
             )}
-            {!gapLoading && gapWarnings.length > 0 && (
+            {!gapLoading && gapWarnings && (lang === 'fr' ? gapWarnings.fr : gapWarnings.en).length > 0 && (
               <ul className="space-y-1">
-                {gapWarnings.map((w, i) => (
+                {(lang === 'fr' ? gapWarnings.fr : gapWarnings.en).map((w, i) => (
                   <li key={i} className="flex items-start gap-1.5 text-xs text-amber-800 dark:text-amber-300">
                     <span className="shrink-0 mt-0.5">⚠</span>
                     <span>{w}</span>
@@ -621,7 +624,7 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
               </ul>
             )}
           </div>
-          {!gapLoading && gapWarnings.length > 0 && (
+          {!gapLoading && gapWarnings && (lang === 'fr' ? gapWarnings.fr : gapWarnings.en).length > 0 && (
             <button
               onClick={() => setGapDismissed(true)}
               className="shrink-0 text-amber-500 hover:text-amber-700 transition-colors"

@@ -147,7 +147,7 @@ export default function ContentGeneratorPage() {
   const [editable, setEditable]       = useState(false)
 
   // ── Hook scorer state ─────────────────────────────────────────────────────
-  type HookScore = { scrollStop: 'Weak' | 'Good' | 'Strong'; clarity: 'Weak' | 'Good' | 'Strong'; intrigue: 'Weak' | 'Good' | 'Strong'; suggestion: string }
+  type HookScore = { scrollStop: 'Weak' | 'Good' | 'Strong'; clarity: 'Weak' | 'Good' | 'Strong'; intrigue: 'Weak' | 'Good' | 'Strong'; suggestion_fr: string; suggestion_en: string }
   const [hookScore, setHookScore]       = useState<HookScore | null>(null)
   const [hookScoring, setHookScoring]   = useState(false)
   const scoredContentRef                = useRef<string>('')
@@ -283,17 +283,17 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
     const timer = setTimeout(async () => {
       setHookScoring(true)
       try {
-        type ScoreResult = { scrollStop: string; clarity: string; intrigue: string; suggestion: string }
+        type ScoreResult = { scrollStop: string; clarity: string; intrigue: string; suggestion_fr: string; suggestion_en: string }
         const result = await callGroqJSON<ScoreResult>('', [
           {
             role: 'system',
-            content: `You are a social media hook analyst. Score this hook on 3 axes. Return JSON exactly: {"scrollStop":"Weak|Good|Strong","clarity":"Weak|Good|Strong","intrigue":"Weak|Good|Strong","suggestion":"one concrete improvement in max 15 words"}. Be honest and strict — most hooks are Weak or Good, Strong is rare. Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`,
+            content: `You are a social media hook analyst. Score this hook on 3 axes. Return JSON exactly: {"scrollStop":"Weak|Good|Strong","clarity":"Weak|Good|Strong","intrigue":"Weak|Good|Strong","suggestion_fr":"amélioration concrète en max 15 mots","suggestion_en":"one concrete improvement in max 15 words"}. Be honest and strict — most hooks are Weak or Good, Strong is rare.`,
           },
           { role: 'user', content: `Hook: "${hook}"\nChannel: ${CHANNEL_MAP[channel]?.label ?? channel}\nTone: ${tone}` },
-        ], { temperature: 0.2, max_tokens: 150, requiredKeys: ['scrollStop', 'clarity', 'intrigue', 'suggestion'] })
+        ], { temperature: 0.2, max_tokens: 180, requiredKeys: ['scrollStop', 'clarity', 'intrigue', 'suggestion_fr', 'suggestion_en'] })
 
         const valid = ['Weak', 'Good', 'Strong']
-        if (valid.includes(result.scrollStop) && valid.includes(result.clarity) && valid.includes(result.intrigue) && result.suggestion) {
+        if (valid.includes(result.scrollStop) && valid.includes(result.clarity) && valid.includes(result.intrigue) && result.suggestion_fr) {
           setHookScore(result as HookScore)
           scoredContentRef.current = hook
         }
@@ -624,7 +624,7 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
                       </div>
                       <p className="text-xs text-indigo-700 dark:text-indigo-300 font-medium flex items-start gap-1.5">
                         <span className="shrink-0 mt-0.5">💡</span>
-                        <span>{hookScore.suggestion}</span>
+                        <span>{lang === 'fr' ? hookScore.suggestion_fr : hookScore.suggestion_en}</span>
                       </p>
                     </div>
                   )}
