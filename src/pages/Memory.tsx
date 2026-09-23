@@ -18,7 +18,7 @@ function buildSystemPrompt(
 ): string {
   if (!company) return ''
   const lines: string[] = [
-    `# Brand Identity — ${company.name}`,
+    `# Brand Identity - ${company.name}`,
     '',
     `## Company Overview`,
     `- **Name**: ${company.name}`,
@@ -103,7 +103,7 @@ function Section({
 
 // ─── Inline editable field ─────────────────────────────────────
 function EditField({
-  label, value, onChange, multiline = false, placeholder = '—',
+  label, value, onChange, multiline = false, placeholder = '-',
 }: { label: string; value: string; onChange: (v: string) => void; multiline?: boolean; placeholder?: string }) {
   const cls = "w-full px-3 py-2 text-sm rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)] text-[var(--color-text)] outline-none focus:ring-2 focus:ring-indigo-500 placeholder:text-[var(--color-text-muted)] resize-none"
   return (
@@ -240,7 +240,7 @@ export default function MemoryPage() {
       {/* ── Body: 2 columns ── */}
       <div className="flex-1 flex gap-4 min-h-0 overflow-hidden">
 
-        {/* LEFT col — editable sections */}
+        {/* LEFT col - editable sections */}
         <div className="flex-1 overflow-y-auto space-y-3 pb-6 min-w-0">
 
           {/* 1. Company Profile */}
@@ -395,7 +395,7 @@ export default function MemoryPage() {
 
         </div>{/* end left col */}
 
-        {/* RIGHT col — prompt preview and published history */}
+        {/* RIGHT col - prompt preview and published history */}
         <div className="hidden lg:flex w-80 xl:w-96 shrink-0 flex-col gap-3">
           <div className="flex-1 bg-gradient-to-br from-indigo-950 to-violet-950 rounded-2xl border border-indigo-800 overflow-hidden flex flex-col">
             {/* Panel header */}
@@ -418,7 +418,7 @@ export default function MemoryPage() {
               </button>
             </div>
 
-            {/* Prompt text — scrollable */}
+            {/* Prompt text - scrollable */}
             <div className="flex-1 overflow-y-auto p-4">
               <pre className="text-xs text-indigo-100 font-mono leading-relaxed whitespace-pre-wrap break-words">
                 {systemPrompt || (lang === 'fr' ? '(Remplissez les sections pour voir le prompt)' : '(Fill in sections to see the prompt)')}

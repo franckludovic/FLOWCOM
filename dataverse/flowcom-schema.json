@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FlowCom Dataverse schema manifest",
+  "description": "Authoritative planning manifest for the first Dataverse migration. Create these as custom tables using the fc publisher prefix.",
+  "publisherPrefix": "fc",
+  "tenantModel": "single-environment-company-partition",
+  "tables": [
+    {
+      "logicalName": "fc_company",
+      "displayName": "Company",
+      "ownership": "userOrTeam",
+      "columns": [
+        ["fc_name", "Company name", "string", {"required": true, "maxLength": 200}],
+        ["fc_industry", "Industry", "string", {"maxLength": 200}],
+        ["fc_website", "Website", "string", {"maxLength": 500}],
+        ["fc_foundedyear", "Founded year", "string", {"maxLength": 20}],
+        ["fc_teamsize", "Team size", "string", {"maxLength": 50}],
+        ["fc_location", "Location", "string", {"maxLength": 200}],
+        ["fc_shortdescription", "Short description", "multiline", {"maxLength": 4000}],
+        ["fc_mission", "Mission", "multiline", {"maxLength": 4000}],
+        ["fc_vision", "Vision", "multiline", {"maxLength": 4000}],
+        ["fc_values", "Values", "multiline", {"maxLength": 4000}],
+        ["fc_tone", "Tone", "string", {"maxLength": 200}],
+        ["fc_targets", "Targets", "multiline", {"maxLength": 4000}],
+        ["fc_channels", "Channels", "string", {"maxLength": 500}],
+        ["fc_frequency", "Publishing frequency", "string", {"maxLength": 100}]
+      ]
+    },
+    {
+      "logicalName": "fc_profile",
+      "displayName": "FlowCom profile",
+      "ownership": "user",
+      "columns": [
+        ["fc_entraid", "Entra user id", "string", {"required": true, "maxLength": 100, "alternateKey": true}],
+        ["fc_name", "Name", "string", {"maxLength": 200}],
+        ["fc_email", "Email", "string", {"maxLength": 320}],
+        ["fc_language", "Language", "string", {"maxLength": 10}]
+      ]
+    },
+    {
+      "logicalName": "fc_companymembership",
+      "displayName": "Company membership",
+      "ownership": "userOrTeam",
+      "columns": [
+        ["fc_company", "Company", "lookup", {"target": "fc_company", "required": true}],
+        ["fc_profile", "Profile", "lookup", {"target": "fc_profile", "required": true}],
+        ["fc_role", "Role", "choice", {"values": ["owner", "admin", "editor", "viewer"], "required": true}]
+      ],
+      "alternateKeys": [["fc_company", "fc_profile"]]
+    },
+    {
+      "logicalName": "fc_product",
+      "displayName": "Product",
+      "ownership": "userOrTeam",
+      "columns": [["fc_company", "Company", "lookup", {"target": "fc_company", "required": true}], ["fc_name", "Name", "string", {"maxLength": 200}], ["fc_description", "Description", "multiline", {"maxLength": 4000}]]
+    },
+    {
+      "logicalName": "fc_audiencesegment",
+      "displayName": "Audience segment",
+      "ownership": "userOrTeam",
+      "columns": [["fc_company", "Company", "lookup", {"target": "fc_company", "required": true}], ["fc_name", "Name", "string", {"maxLength": 200}], ["fc_painpoints", "Pain points", "multiline", {"maxLength": 4000}], ["fc_interests", "Interests", "multiline", {"maxLength": 4000}]]
+    },
+    {
+      "logicalName": "fc_keymessage",
+      "displayName": "Key message",
+      "ownership": "userOrTeam",
+      "columns": [["fc_company", "Company", "lookup", {"target": "fc_company", "required": true}], ["fc_content", "Content", "multiline", {"maxLength": 4000}]]
+    },
+    {
+      "logicalName": "fc_calendaritem",
+      "displayName": "Calendar item",
+      "ownership": "userOrTeam",
+      "columns": [
+        ["fc_company", "Company", "lookup", {"target": "fc_company", "required": true}],
+        ["fc_month", "Month", "string", {"maxLength": 7, "required": true}],
+        ["fc_postdate", "Post date", "dateonly", {"required": true}],
+        ["fc_topic", "Topic", "string", {"maxLength": 500}],
+        ["fc_goal", "Goal", "string", {"maxLength": 500}],
+        ["fc_format", "Format", "choice", {"values": ["Post", "Carousel", "Video", "Story"]}],
+        ["fc_channel", "Channel", "string", {"maxLength": 100}],
+        ["fc_status", "Status", "choice", {"values": ["idea", "scheduled", "published"]}]
+      ]
+    },
+    {
+      "logicalName": "fc_libraryitem",
+      "displayName": "Library item",
+      "ownership": "userOrTeam",
+      "columns": [
+        ["fc_company", "Company", "lookup", {"target": "fc_company", "required": true}],
+        ["fc_title", "Title", "string", {"maxLength": 500}],
+        ["fc_hook", "Hook", "multiline", {"maxLength": 4000}],
+        ["fc_episodecontext", "Episode context", "multiline", {"maxLength": 4000}],
+        ["fc_body", "Body", "multiline", {"maxLength": 10000}],
+        ["fc_conclusion", "Conclusion", "multiline", {"maxLength": 4000}],
+        ["fc_reward", "Reward", "multiline", {"maxLength": 4000}],
+        ["fc_cta", "Call to action", "multiline", {"maxLength": 4000}],
+        ["fc_hashtags", "Hashtags", "string", {"maxLength": 2000}],
+        ["fc_visualidea", "Visual idea", "multiline", {"maxLength": 4000}],
+        ["fc_videoscript", "Video script", "multiline", {"maxLength": 10000}],
+        ["fc_channel", "Channel", "string", {"maxLength": 100}],
+        ["fc_format", "Format", "choice", {"values": ["post", "carousel", "video"]}],
+        ["fc_tone", "Tone", "string", {"maxLength": 100}],
+        ["fc_status", "Status", "choice", {"values": ["Draft", "Validated", "Published", "Archived"]}],
+        ["fc_publishdate", "Publish date", "dateonly", {"required": false}]
+      ]
+    },
+    {
+      "logicalName": "fc_roadmapmilestone",
+      "displayName": "Roadmap milestone",
+      "ownership": "userOrTeam",
+      "columns": [["fc_company", "Company", "lookup", {"target": "fc_company", "required": true}], ["fc_milestoneid", "Milestone id", "string", {"maxLength": 50, "required": true}], ["fc_completed", "Completed", "boolean"], ["fc_updatedat", "Updated at", "datetime"]],
+      "alternateKeys": [["fc_company", "fc_milestoneid"]]
+    },
+    {
+      "logicalName": "fc_weeklyreport",
+      "displayName": "Weekly report",
+      "ownership": "userOrTeam",
+      "columns": [["fc_company", "Company", "lookup", {"target": "fc_company", "required": true}], ["fc_weeklabel", "Week label", "string", {"maxLength": 100}], ["fc_postsjson", "Posts JSON", "multiline", {"maxLength": 100000}], ["fc_flowcomscore", "FlowCom score", "decimal"], ["fc_scorebreakdownjson", "Score breakdown JSON", "multiline", {"maxLength": 100000}], ["fc_aianalysisjson", "AI analysis JSON", "multiline", {"maxLength": 100000}]]
+    },
+    {
+      "logicalName": "fc_contentscore",
+      "displayName": "Content score",
+      "ownership": "userOrTeam",
+      "columns": [["fc_company", "Company", "lookup", {"target": "fc_company", "required": true}], ["fc_libraryitem", "Library item", "lookup", {"target": "fc_libraryitem", "required": true}], ["fc_score", "Score", "choice", {"values": ["ready", "good", "needs-work"]}], ["fc_scoredat", "Scored at", "datetime"]],
+      "alternateKeys": [["fc_company", "fc_libraryitem"]]
+    },
+    {
+      "logicalName": "fc_companyintegration",
+      "displayName": "Company integration",
+      "ownership": "userOrTeam",
+      "columns": [["fc_company", "Company", "lookup", {"target": "fc_company", "required": true}], ["fc_provider", "Provider", "choice", {"values": ["buffer", "groq"]}], ["fc_externalaccountid", "External account id", "string", {"maxLength": 200}], ["fc_externalaccountname", "External account name", "string", {"maxLength": 200}], ["fc_status", "Status", "choice", {"values": ["connected", "disabled", "error"]}], ["fc_secretreference", "Secret reference", "string", {"maxLength": 500}]],
+      "alternateKeys": [["fc_company", "fc_provider"]]
+    }
+  ],
+  "notMigrated": [
+    "company_integration_secrets.access_token",
+    "profiles.api_key",
+    "Supabase auth.users",
+    "Supabase RLS policies",
+    "Supabase Edge Function runtime"
+  ]
+}

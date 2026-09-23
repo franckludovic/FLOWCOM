@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// Supabase database types — replace with generated types from `supabase gen types typescript`
+// Supabase database types - replace with generated types from `supabase gen types typescript`
 export type Database = {
   public: {
     Tables: {

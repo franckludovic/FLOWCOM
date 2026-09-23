@@ -24,3 +24,9 @@ dist-ssr
 *.sw?
 
 .vercel
+supabase/.temp/
+
+# Azure Functions provider backend
+functions/node_modules/
+functions/dist/
+functions/local.settings.json

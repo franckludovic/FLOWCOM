@@ -9,11 +9,14 @@ export interface Profile {
 }
 
 // ─── Company ─────────────────────────────────────────────────────────────────
+export type CompanyRole = 'owner' | 'admin' | 'editor' | 'viewer'
+
 export interface Company {
   id: string
   user_id: string
   name: string
   is_active: boolean
+  role?: CompanyRole
   // Step 1
   industry: string
   website: string

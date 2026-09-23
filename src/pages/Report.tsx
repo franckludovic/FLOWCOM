@@ -64,8 +64,6 @@ export default function ReportPage() {
   const { t, lang } = useI18n()
   const { activeCompany, products, segments, keyMessages, addKeyMessage } = useCompany()
   const { orgId, channels: bufferChannels } = useBuffer()
-  const bufferToken = import.meta.env.VITE_BUFFER_API_KEY
-
   const [history, setHistory] = useState<WeeklyReport[]>([])
   
   // Current editing state
@@ -178,7 +176,7 @@ ${validPosts.map(p => `- ${p.title} (${p.channel}): Reach=${p.reach}, 3sViews=${
       : `Act as an expert Social Media analyst. Analyze these weekly metrics and provide a strict JSON report structured with: "whatWorked" (array of bullet points), "whatToStop" (array of bullet points), "adjustments" (array of tweaks for next week), and "insights" (deep audience learnings to memorize). Be concrete and highly specific.`
 
     try {
-      const res = await callGroqJSON<ReportAnalysis>('', [
+      const res = await callGroqJSON<ReportAnalysis>(activeCompany?.id ?? '', [
         { role: 'system', content: prompt },
         { role: 'user', content: context }
       ], { temperature: 0.4, requiredKeys: ['whatWorked', 'whatToStop', 'adjustments', 'insights'] })
@@ -193,19 +191,15 @@ ${validPosts.map(p => `- ${p.title} (${p.channel}): Reach=${p.reach}, 3sViews=${
   }
 
   const importFromBuffer = async () => {
-    if (!bufferToken) {
-      alert(lang === 'fr' ? 'Clé API Buffer manquante.' : 'Missing Buffer API Key.')
-      return
-    }
-    if (!orgId) {
+    if (!activeCompany || !orgId) {
       alert(lang === 'fr' ? 'Buffer non connecté.' : 'Buffer not connected yet.')
       return
     }
     setImporting(true)
     setError(null)
     try {
-      // org + channels already in context — only fetch posts
-      const postsData = await bufferQuery(bufferToken, `
+      // org + channels already in context - only fetch posts
+      const postsData = await bufferQuery(activeCompany.id, `
         query GetPostsWithMetrics($orgId: OrganizationId!) {
           posts(
             first: 10
@@ -281,7 +275,7 @@ ${validPosts.map(p => `- ${p.title} (${p.channel}): Reach=${p.reach}, 3sViews=${
       if (!hasMetrics) {
         setError(lang === 'fr'
           ? 'Posts importés sans métriques. Les métriques nécessitent une clé API personnelle Buffer (pas un token d\'application).'
-          : 'Posts imported but without metrics. Metrics require a Buffer personal API key — app tokens only return post text.')
+          : 'Posts imported but without metrics. Metrics require a Buffer personal API key - app tokens only return post text.')
       }
 
       setPosts(importedPosts)
@@ -480,7 +474,7 @@ ${validPosts.map(p => `- ${p.title} (${p.channel}): Reach=${p.reach}, 3sViews=${
               <span className="shrink-0 mt-0.5">ℹ️</span>
               {lang === 'fr'
                 ? 'L\'import automatique nécessite une clé API personnelle Buffer (pas un token d\'application). Les métriques (likes, portée…) ne sont disponibles qu\'avec une clé personnelle.'
-                : 'Auto-import requires a Buffer personal API key (not an app token). Metrics (likes, reach…) are only available with a personal key — app tokens return posts without metric data.'}
+                : 'Auto-import requires a Buffer personal API key (not an app token). Metrics (likes, reach…) are only available with a personal key - app tokens return posts without metric data.'}
             </p>
           </div>
 

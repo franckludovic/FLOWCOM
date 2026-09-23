@@ -7,7 +7,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('Supabase env vars not set. Add them to .env.local')
 }
 
-// Using untyped client for now — replace with typed client once schema is generated
+// Using untyped client for now - replace with typed client once schema is generated
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const supabase = createClient<any>(
   supabaseUrl || 'https://placeholder.supabase.co',

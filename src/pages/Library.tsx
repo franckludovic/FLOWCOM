@@ -11,8 +11,12 @@ import { useI18n } from '@/contexts/I18nContext'
 import { useCompany } from '@/contexts/CompanyContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
-import { supabase } from '@/lib/supabase'
-import { toLibraryInsert } from '@/lib/dataMappers'
+import {
+  listDataverseContentScores,
+  listDataverseLibraryItems,
+  replaceDataverseLibraryItems,
+  saveDataverseContentScores,
+} from '@/lib/dataverse'
 import { callGroq } from '@/lib/groq'
 import { buildAiContext } from '@/lib/aiContext'
 
@@ -85,9 +89,9 @@ export default function LibraryPage() {
     const loadItems = async () => {
       if (!activeCompany) { setItems([]); setLoadingItems(false); return }
       setLoadingItems(true)
-      const { data } = await supabase.from('library_items').select('*').eq('company_id', activeCompany.id).order('created_at', { ascending: false })
+      const data = await listDataverseLibraryItems(activeCompany.id)
       if (!cancelled) {
-        setItems((data ?? []) as LibraryItem[])
+        setItems(data)
         setLoadingItems(false)
       }
     }
@@ -108,23 +112,17 @@ export default function LibraryPage() {
   })
   const scoringRef = useRef(false)
 
-  // Load scores from Supabase when company changes (authoritative source)
+  // Load scores from Dataverse when company changes (authoritative source)
   useEffect(() => {
     if (!activeCompany) return
-    supabase
-      .from('content_scores')
-      .select('item_id, score')
-      .eq('company_id', activeCompany.id)
-      .then(({ data }) => {
-        if (!data?.length) return
-        const remote: Record<string, ScoreLevel> = {}
-        data.forEach(r => { remote[r.item_id] = r.score as ScoreLevel })
-        setScores(prev => {
-          const merged = { ...prev, ...remote }
-          localStorage.setItem(localKey, JSON.stringify(merged))
-          return merged
-        })
+    listDataverseContentScores(activeCompany.id).then(remote => {
+      if (!Object.keys(remote).length) return
+      setScores(prev => {
+        const merged = { ...prev, ...remote }
+        localStorage.setItem(localKey, JSON.stringify(merged))
+        return merged
       })
+    })
   }, [activeCompany?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Persist new scores to Supabase + localStorage
@@ -135,19 +133,10 @@ export default function LibraryPage() {
       localStorage.setItem(localKey, JSON.stringify(merged))
       return merged
     })
-    // Upsert to Supabase (unique constraint on company_id + item_id)
-    const rows = Object.entries(newScores).map(([item_id, score]) => ({
-      company_id: activeCompany.id,
-      item_id,
-      score,
-      scored_at: new Date().toISOString(),
-    }))
-    await supabase
-      .from('content_scores')
-      .upsert(rows, { onConflict: 'company_id,item_id' })
+    await saveDataverseContentScores(activeCompany.id, newScores)
   }
 
-  // Background scorer — runs when items load, scores up to 5 unscored items
+  // Background scorer - runs when items load, scores up to 5 unscored items
   useEffect(() => {
     if (!apiKeyConfigured || scoringRef.current) return
     const unscored = items
@@ -163,7 +152,7 @@ export default function LibraryPage() {
       for (const item of unscored) {
         try {
           const text = [item.hook, item.body].filter(Boolean).join('\n').slice(0, 400)
-          const result = await callGroq('', [
+          const result = await callGroq(activeCompany?.id ?? '', [
             {
               role: 'system',
               content: `You are a social media content reviewer. Rate this ${item.channel} ${item.format} content. Reply with ONLY one word: "ready" (strong hook, clear message, good CTA), "good" (decent but could be improved), or "needs-work" (weak hook, unclear, or missing CTA). Brand context:\n${ctx}\nRespond in ${lang === 'fr' ? 'French' : 'English'} but the rating word must still be one of: ready, good, needs-work.`,
@@ -188,10 +177,23 @@ export default function LibraryPage() {
   const saveToStorage = async (newItems: LibraryItem[]) => {
     if (!activeCompany) return
     setItems(newItems)
-    await supabase.from('library_items').delete().eq('company_id', activeCompany.id)
-    if (newItems.length) {
-      await supabase.from('library_items').insert(newItems.map(item => toLibraryInsert(item, activeCompany.id)))
-    }
+    await replaceDataverseLibraryItems(activeCompany.id, newItems.map(item => ({
+      title: item.title,
+      hook: item.hook,
+      episode_context: '',
+      body: item.body,
+      conclusion: '',
+      reward: '',
+      cta: '',
+      hashtags: '',
+      visual_idea: item.visual_idea,
+      video_script: '',
+      channel: item.channel,
+      format: (item.format === 'carousel' || item.format === 'video' ? item.format : 'post'),
+      tone: (item.tone === 'casual' ? 'casual' : 'professional'),
+      status: item.status,
+      publish_date: null,
+    })))
     window.dispatchEvent(new Event('flowcom:data-updated'))
   }
 

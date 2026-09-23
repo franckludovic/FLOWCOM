@@ -15,8 +15,12 @@ import { useAuth } from '@/contexts/AuthContext'
 import { callGroqJSON, buildGroqError } from '@/lib/groq'
 import { buildAiContext } from '@/lib/aiContext'
 import { cn } from '@/lib/utils'
-import { supabase } from '@/lib/supabase'
-import { mapCalendarRow } from '@/lib/dataMappers'
+import {
+  deleteDataverseCalendarItem,
+  listDataverseCalendarItems,
+  replaceDataverseCalendarMonth,
+  updateDataverseCalendarItem,
+} from '@/lib/dataverse'
 
 // ─── Types ─────────────────────────────────────────────────────
 interface CalendarItem {
@@ -178,13 +182,9 @@ export default function CalendarPage() {
     const loadItems = async () => {
       if (!activeCompany) { setItems([]); setLoadingItems(false); return }
       setLoadingItems(true)
-      const { data } = await supabase
-        .from('calendar_items')
-        .select('*')
-        .eq('company_id', activeCompany.id)
-        .order('post_date')
+      const data = await listDataverseCalendarItems(activeCompany.id)
       if (!cancelled) {
-        setItems((data ?? []).map(mapCalendarRow))
+        setItems(data)
         setLoadingItems(false)
       }
     }
@@ -234,7 +234,7 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
 
     try {
       type APIResponse = { items: Array<{ date: string; topic: string; goal: string; format: string; channel: string }> }
-      const res = await callGroqJSON<APIResponse>('', [
+      const res = await callGroqJSON<APIResponse>(activeCompany?.id ?? '', [
         { role: 'system', content: systemMsg },
         { role: 'user',   content: userMsg },
       ], { temperature: 0.8, max_tokens: 3000, requiredKeys: ['items'] })
@@ -249,18 +249,15 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
         channel: channels.includes(item.channel?.toLowerCase()) ? item.channel.toLowerCase() : channels[0],
         status: 'idea',
       }))
-      await supabase.from('calendar_items').delete().eq('company_id', activeCompany.id).eq('month', mk)
-      const { data: savedItems } = await supabase.from('calendar_items').insert(newItems.map(item => ({
-        company_id: activeCompany.id,
-        month: mk,
-        post_date: item.date,
+      const savedItems = await replaceDataverseCalendarMonth(activeCompany.id, mk, newItems.map(item => ({
+        date: item.date,
         topic: item.topic,
         goal: item.goal,
         format: item.format,
         channel: item.channel,
         status: item.status,
-      }))).select('*')
-      setItems(prev => [...prev.filter(i => !i.date.startsWith(mk)), ...(savedItems ?? []).map(mapCalendarRow)])
+      })))
+      setItems(prev => [...prev.filter(i => !i.date.startsWith(mk)), ...savedItems])
     } catch (e) {
       setError(t(buildGroqError(e) as Parameters<typeof t>[0]))
     } finally {
@@ -270,29 +267,29 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
 
   const clearMonth  = async () => {
     if (!activeCompany) return
-    await supabase.from('calendar_items').delete().eq('company_id', activeCompany.id).eq('month', mk)
+    await replaceDataverseCalendarMonth(activeCompany.id, mk, [])
     setItems(prev => prev.filter(i => !i.date.startsWith(mk)))
   }
   const cycleStatus = async (id: string) => {
     const item = items.find(i => i.id === id)
     if (!item) return
     const status = STATUS_CYCLE[item.status]
-    await supabase.from('calendar_items').update({ status }).eq('id', id)
+    await updateDataverseCalendarItem(id, { status })
     setItems(prev => prev.map(i => i.id === id ? { ...i, status } : i))
   }
   const removeItem  = async (id: string) => {
-    await supabase.from('calendar_items').delete().eq('id', id)
+    await deleteDataverseCalendarItem(id)
     setItems(prev => prev.filter(i => i.id !== id))
   }
   const updateItem  = async (id: string, field: keyof CalendarItem, value: string) => {
-    await supabase.from('calendar_items').update({ [field === 'date' ? 'post_date' : field]: value }).eq('id', id)
+    await updateDataverseCalendarItem(id, field === 'date' ? { date: value } : { [field]: value } as Parameters<typeof updateDataverseCalendarItem>[1])
     setItems(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i))
   }
   const goGenerate  = (item: CalendarItem) => {
     navigate(`/content?${new URLSearchParams({ topic: item.topic, channel: item.channel, goal: item.goal, format: item.format }).toString()}`)
   }
 
-  // ── AI gap analysis — fires when monthItems changes and has ≥3 items ───────
+  // ── AI gap analysis - fires when monthItems changes and has ≥3 items ───────
   useEffect(() => {
     if (!apiKeyConfigured) return
     if (monthItems.length < 3) { setGapWarnings(null); return }
@@ -331,10 +328,10 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
         ].join('\n')
 
         type GapResult = { warnings_fr: string[]; warnings_en: string[] }
-        const result = await callGroqJSON<GapResult>('', [
+        const result = await callGroqJSON<GapResult>(activeCompany?.id ?? '', [
           {
             role: 'system',
-            content: `You are an editorial calendar auditor. Analyze this month's content plan and identify real problems. Return JSON exactly: {"warnings_fr":["string"],"warnings_en":["string"]} — each array contains 1 to 3 short warning strings (max 15 words each) in French for warnings_fr and English for warnings_en. Only flag real issues: publishing gaps > 5 days, channel imbalance vs brand preference, goals that are overrepresented or missing. If the plan is good, return {"warnings_fr":[],"warnings_en":[]}. Do not invent problems.`,
+            content: `You are an editorial calendar auditor. Analyze this month's content plan and identify real problems. Return JSON exactly: {"warnings_fr":["string"],"warnings_en":["string"]} - each array contains 1 to 3 short warning strings (max 15 words each) in French for warnings_fr and English for warnings_en. Only flag real issues: publishing gaps > 5 days, channel imbalance vs brand preference, goals that are overrepresented or missing. If the plan is good, return {"warnings_fr":[],"warnings_en":[]}. Do not invent problems.`,
           },
           { role: 'user', content: planSummary },
         ], { temperature: 0.2, max_tokens: 300, requiredKeys: ['warnings_fr', 'warnings_en'] })
@@ -346,7 +343,7 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
           })
         }
       } catch {
-        // Silently fail — gap analysis is non-critical
+        // Silently fail - gap analysis is non-critical
       } finally {
         setGapLoading(false)
       }

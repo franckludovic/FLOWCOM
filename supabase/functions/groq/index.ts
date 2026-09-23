@@ -11,6 +11,7 @@ type Message = {
 }
 
 type RequestBody = {
+  companyId?: string
   messages: Message[]
   options?: {
     temperature?: number
@@ -51,8 +52,6 @@ Deno.serve(async request => {
     .eq('id', user.id)
     .single()
 
-  if (profileError || !profile?.api_key) return jsonResponse({ error: 'No API key configured' }, 400)
-
   let body: RequestBody
   try {
     body = await request.json() as RequestBody
@@ -61,8 +60,45 @@ Deno.serve(async request => {
   }
 
   if ((body as RequestBody & { status?: boolean }).status) {
-    return jsonResponse({ configured: Boolean(profile.api_key) })
+    let configured = Boolean(profile?.api_key)
+    if (!configured) {
+      const { data: memberships } = await admin
+        .from('company_members')
+        .select('company_id')
+        .eq('user_id', user.id)
+      const companyIds = (memberships ?? []).map(row => row.company_id)
+      if (companyIds.length) {
+        const { data: companySecrets } = await admin
+          .from('company_integration_secrets')
+          .select('company_id')
+          .eq('provider', 'groq')
+          .in('company_id', companyIds)
+          .limit(1)
+        configured = Boolean(companySecrets?.length)
+      }
+    }
+    return jsonResponse({ configured })
   }
+
+  let apiKey = profile?.api_key ?? null
+  if (body.companyId) {
+    const { data: membership } = await admin
+      .from('company_members')
+      .select('company_id')
+      .eq('company_id', body.companyId)
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (!membership) return jsonResponse({ error: 'You do not have access to this company' }, 403)
+
+    const { data: companySecret } = await admin
+      .from('company_integration_secrets')
+      .select('access_token')
+      .eq('company_id', body.companyId)
+      .eq('provider', 'groq')
+      .maybeSingle()
+    apiKey = companySecret?.access_token ?? apiKey
+  }
+  if (!apiKey) return jsonResponse({ error: 'No API key configured' }, 400)
 
   if (!Array.isArray(body.messages) || body.messages.length === 0) {
     return jsonResponse({ error: 'Messages are required' }, 400)
@@ -71,7 +107,7 @@ Deno.serve(async request => {
   const completion = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${profile.api_key}`,
+      Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({

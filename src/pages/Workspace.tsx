@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { Zap, ArrowRight, Brain, CalendarDays, FileText, BookOpen, Sparkles, RefreshCw } from 'lucide-react'
 import { callGroqJSON, buildGroqError } from '@/lib/groq'
 import { buildAiContext } from '@/lib/aiContext'
-import { supabase } from '@/lib/supabase'
+import { getDataverseWorkspaceCounts } from '@/lib/dataverse'
 
 interface WorkspaceActivity {
   title_fr: string
@@ -36,33 +36,9 @@ export default function WorkspacePage() {
     let cancelled = false
     const loadCounts = async () => {
       if (!activeCompany) return
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-      const sevenDaysAgo  = new Date(Date.now() -  7 * 24 * 60 * 60 * 1000).toISOString()
-      const weekStart     = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay())
-      const weekStartIso  = weekStart.toISOString().split('T')[0]
-
-      const [
-        { count: calendar },
-        { count: library },
-        { count: roadmap },
-        { count: publishedLast30 },
-        { data: staleDraftData },
-        { data: recentReports },
-      ] = await Promise.all([
-        supabase.from('calendar_items').select('id', { count: 'exact', head: true }).eq('company_id', activeCompany.id),
-        supabase.from('library_items').select('id', { count: 'exact', head: true }).eq('company_id', activeCompany.id),
-        supabase.from('roadmap_milestones').select('id', { count: 'exact', head: true }).eq('company_id', activeCompany.id).eq('completed', true),
-        supabase.from('library_items').select('id', { count: 'exact', head: true }).eq('company_id', activeCompany.id).eq('status', 'Published').gte('created_at', thirtyDaysAgo),
-        supabase.from('library_items').select('id').eq('company_id', activeCompany.id).eq('status', 'Draft').lte('created_at', sevenDaysAgo),
-        supabase.from('weekly_reports').select('id').eq('company_id', activeCompany.id).gte('created_at', weekStartIso).limit(1),
-      ])
+      const counts = await getDataverseWorkspaceCounts(activeCompany.id)
       if (!cancelled) setWorkspaceCounts({
-        calendar: calendar ?? 0,
-        library: library ?? 0,
-        roadmap: roadmap ?? 0,
-        publishedLast30: publishedLast30 ?? 0,
-        staleDrafts: staleDraftData?.length ?? 0,
-        hasReportThisWeek: (recentReports?.length ?? 0) > 0,
+        ...counts,
       })
     }
     loadCounts()
@@ -105,10 +81,10 @@ export default function WorkspacePage() {
         `Draft posts sitting untouched for more than 7 days: ${staleDrafts}`,
         `Weekly performance report filed this week: ${hasReportThisWeek ? 'yes' : 'no'}`,
       ].join('\n')
-      const result = await callGroqJSON<{ activities: WorkspaceActivity[] }>('', [
+      const result = await callGroqJSON<{ activities: WorkspaceActivity[] }>(activeCompany?.id ?? '', [
         {
           role: 'system',
-          content: `You are FlowCom's proactive communication strategist. Turn the live workspace signals into three useful, non-duplicated next actions. Prioritize missing foundations before optimization. Return only JSON matching this exact schema — every string field must be provided in BOTH French and English: {"activities":[{"title_fr":"string","title_en":"string","reason_fr":"one sentence in French","reason_en":"one sentence in English","action_fr":"short button label in French","action_en":"short button label in English","route":"/content or /calendar or /roadmap or /memory or /onboarding or /studio or /library or /publishing-history or /report","step":"number required only when route is /onboarding: 1 for company info, 2 for brand identity, 3 for products, 4 for audience, 5 for communication","priority":"high or medium or low"}]}. For onboarding actions, always include the exact step. Use the publishing and draft signals to suggest concrete actions. Do not invent facts.\nCompany context:\n${buildAiContext({ company: activeCompany, products, segments, keyMessages })}\nLive signals:\n${signals}`
+          content: `You are FlowCom's proactive communication strategist. Turn the live workspace signals into three useful, non-duplicated next actions. Prioritize missing foundations before optimization. Return only JSON matching this exact schema - every string field must be provided in BOTH French and English: {"activities":[{"title_fr":"string","title_en":"string","reason_fr":"one sentence in French","reason_en":"one sentence in English","action_fr":"short button label in French","action_en":"short button label in English","route":"/content or /calendar or /roadmap or /memory or /onboarding or /studio or /library or /publishing-history or /report","step":"number required only when route is /onboarding: 1 for company info, 2 for brand identity, 3 for products, 4 for audience, 5 for communication","priority":"high or medium or low"}]}. For onboarding actions, always include the exact step. Use the publishing and draft signals to suggest concrete actions. Do not invent facts.\nCompany context:\n${buildAiContext({ company: activeCompany, products, segments, keyMessages })}\nLive signals:\n${signals}`
         },
         { role: 'user', content: 'What are the three most useful next actions right now?' }
       ], { temperature: 0.4, max_tokens: 900, requiredKeys: ['activities'] })

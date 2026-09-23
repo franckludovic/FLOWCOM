@@ -1,0 +1,21 @@
+{
+  "name": "flowcom-provider-functions",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "npm run build && func start --javascript"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.8.0",
+    "@azure/identity": "^4.10.0",
+    "@azure/keyvault-secrets": "^4.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.3",
+    "typescript": "~6.0.2"
+  }
+}

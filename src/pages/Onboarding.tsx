@@ -15,8 +15,6 @@ import {
 } from 'react-icons/fa6'
 import { useI18n } from '@/contexts/I18nContext'
 import { useCompany } from '@/contexts/CompanyContext'
-import { useAuth } from '@/contexts/AuthContext'
-import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Product, AudienceSegment } from '@/types'
 
@@ -318,8 +316,8 @@ function StepComms({ data, onChange }: { data: StepCommsData; onChange: (d: Step
         />
       </Field>
 
-      {/* Channels — compact multi-select cards */}
-      {/* Channels — compact multi-select cards with official brand icons */}
+      {/* Channels - compact multi-select cards */}
+      {/* Channels - compact multi-select cards with official brand icons */}
       <Field label={t('field.channels')}>
         <div className="flex flex-wrap gap-2 mt-1">
           {CHANNELS.map(({ id, label, Icon, color }) => {
@@ -408,8 +406,7 @@ export default function OnboardingPage() {
   const { t } = useI18n()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { user } = useAuth()
-  const { activeCompany, createCompany, updateCompany, setActiveCompany, saveProducts, saveSegments } = useCompany()
+  const { activeCompany, products, segments, createCompany, updateCompany, setActiveCompany, saveProducts, saveSegments } = useCompany()
 
   const initialDraft = loadDraft()
   const requestedStep = Number(searchParams.get('step'))
@@ -429,16 +426,6 @@ export default function OnboardingPage() {
 
     const hydrateFromCompany = async () => {
       let company = activeCompany
-      if (!company && user) {
-        const { data } = await supabase
-          .from('companies')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at')
-          .limit(1)
-          .maybeSingle()
-        company = data as typeof activeCompany
-      }
       if (!company || cancelled) return
 
       const nextGeneral = {
@@ -477,12 +464,6 @@ export default function OnboardingPage() {
       setBrand(hydratedBrand)
       setComms(hydratedComms)
 
-      const [{ data: products }, { data: segments }] = await Promise.all([
-        supabase.from('products').select('*').eq('company_id', company.id),
-        supabase.from('audience_segments').select('*').eq('company_id', company.id),
-      ])
-      if (cancelled) return
-
       const hydratedProducts = products?.length
         ? { products: products.map(product => ({ name: product.name, description: product.description })) }
         : productsData
@@ -505,7 +486,7 @@ export default function OnboardingPage() {
 
     hydrateFromCompany()
     return () => { cancelled = true }
-  }, [activeCompany, user])
+  }, [activeCompany, products, segments])
 
   // Auto-save to localStorage on every change
   const persistDraft = useCallback(() => {
@@ -574,7 +555,7 @@ export default function OnboardingPage() {
           <p className="text-sm text-[var(--color-text-muted)] mt-2 max-w-md mx-auto">{t('onboarding.subtitle')}</p>
           {initialDraft && (
             <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2">
-              ✓ {t('sidebar.offlineTitle')} — {t('sidebar.offlineDesc')}
+              ✓ {t('sidebar.offlineTitle')} - {t('sidebar.offlineDesc')}
             </p>
           )}
         </div>

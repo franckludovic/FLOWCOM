@@ -1,7 +1,22 @@
 import {
   createContext, useContext, useState, useEffect, useCallback, type ReactNode
 } from 'react'
-import { supabase } from '@/lib/supabase'
+import {
+  createDataverseCompany,
+  createDataverseKeyMessage,
+  createDataverseProduct,
+  createDataverseSegment,
+  deleteDataverseCompany,
+  deleteDataverseKeyMessage,
+  deleteDataverseProduct,
+  deleteDataverseSegment,
+  getCompaniesForProfile,
+  getCompanyData,
+  getOrCreateDataverseProfile,
+  replaceDataverseProducts,
+  replaceDataverseSegments,
+  updateDataverseCompany,
+} from '@/lib/dataverse'
 import { useAuth } from './AuthContext'
 import type { Company, Product, AudienceSegment, KeyMessage } from '@/types'
 
@@ -30,7 +45,7 @@ interface CompanyContextValue {
 const CompanyContext = createContext<CompanyContextValue | null>(null)
 
 export function CompanyProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [companies, setCompanies] = useState<Company[]>([])
   const [activeCompany, setActiveCompanyState] = useState<Company | null>(null)
   const [products, setProducts] = useState<Product[]>([])
@@ -41,29 +56,24 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   const fetchCompanies = useCallback(async () => {
     if (!user) return
     setLoading(true)
-    const { data } = await supabase
-      .from('companies')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at')
-    if (data) {
-      const list = data as unknown as Company[]
-      setCompanies(list)
-      const active = list.find(c => c.is_active) ?? list[0] ?? null
-      setActiveCompanyState(active)
+    try {
+      const dataverseProfile = profile ?? await getOrCreateDataverseProfile(user)
+      const list = await getCompaniesForProfile(dataverseProfile.id, user.id)
+      const activeId = localStorage.getItem(`flowcom:active-company:${user.id}`)
+      const active = list.find(c => c.id === activeId) ?? list[0] ?? null
+      setCompanies(list.map(c => ({ ...c, is_active: c.id === active?.id })))
+      setActiveCompanyState(active ? { ...active, is_active: true } : null)
+      if (active) localStorage.setItem(`flowcom:active-company:${user.id}`, active.id)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
-  }, [user])
+  }, [profile, user])
 
   const fetchCompanyData = useCallback(async (companyId: string) => {
-    const [p, s, k] = await Promise.all([
-      supabase.from('products').select('*').eq('company_id', companyId),
-      supabase.from('audience_segments').select('*').eq('company_id', companyId),
-      supabase.from('key_messages').select('*').eq('company_id', companyId),
-    ])
-    setProducts((p.data ?? []) as unknown as Product[])
-    setSegments((s.data ?? []) as unknown as AudienceSegment[])
-    setKeyMessages((k.data ?? []) as unknown as KeyMessage[])
+    const data = await getCompanyData(companyId)
+    setProducts(data.products)
+    setSegments(data.segments)
+    setKeyMessages(data.keyMessages)
   }, [])
 
   useEffect(() => {
@@ -85,99 +95,80 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
   const setActiveCompany = async (company: Company) => {
     if (!user) return
-    // Deactivate all, activate selected
-    await supabase.from('companies').update({ is_active: false }).eq('user_id', user.id)
-    await supabase.from('companies').update({ is_active: true }).eq('id', company.id)
+    if (!companies.some(existing => existing.id === company.id)) return
+    // Active company is a per-user preference. It must not be stored on the
+    // shared company row because two members may choose different workspaces.
+    localStorage.setItem(`flowcom:active-company:${user.id}`, company.id)
     setCompanies(prev => prev.map(c => ({ ...c, is_active: c.id === company.id })))
     setActiveCompanyState({ ...company, is_active: true })
   }
 
   const createCompany = async (name: string): Promise<Company | null> => {
     if (!user) return null
-    const { data, error } = await supabase
-      .from('companies')
-      .insert({ user_id: user.id, name, is_active: false })
-      .select()
-      .single()
-    if (error || !data) return null
-    const company = data as unknown as Company
+    const dataverseProfile = profile ?? await getOrCreateDataverseProfile(user)
+    const company = await createDataverseCompany(name, dataverseProfile.id, user.id)
     setCompanies(prev => [...prev, company])
     return company
   }
 
   const updateCompany = async (id: string, updates: Partial<Company>) => {
-    await supabase.from('companies').update(updates).eq('id', id)
+    await updateDataverseCompany(id, updates)
     setCompanies(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c))
     if (activeCompany?.id === id) setActiveCompanyState(prev => prev ? { ...prev, ...updates } : prev)
   }
 
   const deleteCompany = async (id: string) => {
-    await supabase.from('companies').delete().eq('id', id)
+    await deleteDataverseCompany(id)
     const remaining = companies.filter(c => c.id !== id)
     setCompanies(remaining)
     if (activeCompany?.id === id) {
       const next = remaining[0] ?? null
-      setActiveCompanyState(next)
       if (next) await setActiveCompany(next)
+      else {
+        localStorage.removeItem(`flowcom:active-company:${user?.id}`)
+        setActiveCompanyState(null)
+      }
     }
   }
 
   const addProduct = async (product: Omit<Product, 'id' | 'company_id' | 'created_at'>) => {
     if (!activeCompany) return
-    const { data } = await supabase.from('products').insert({ ...product, company_id: activeCompany.id }).select().single()
-    if (data) setProducts(prev => [...prev, data as unknown as Product])
+    const data = await createDataverseProduct(activeCompany.id, product)
+    setProducts(prev => [...prev, data])
   }
 
   const saveProducts = async (companyId: string, nextProducts: Array<Omit<Product, 'id' | 'company_id' | 'created_at'>>) => {
-    await supabase.from('products').delete().eq('company_id', companyId)
-    if (nextProducts.length) {
-      const { data } = await supabase
-        .from('products')
-        .insert(nextProducts.map(product => ({ ...product, company_id: companyId })))
-        .select()
-      setProducts((data ?? []) as unknown as Product[])
-    } else {
-      setProducts([])
-    }
+    setProducts(await replaceDataverseProducts(companyId, nextProducts))
   }
 
   const removeProduct = async (id: string) => {
-    await supabase.from('products').delete().eq('id', id)
+    await deleteDataverseProduct(id)
     setProducts(prev => prev.filter(p => p.id !== id))
   }
 
   const addSegment = async (segment: Omit<AudienceSegment, 'id' | 'company_id' | 'created_at'>) => {
     if (!activeCompany) return
-    const { data } = await supabase.from('audience_segments').insert({ ...segment, company_id: activeCompany.id }).select().single()
-    if (data) setSegments(prev => [...prev, data as unknown as AudienceSegment])
+    const data = await createDataverseSegment(activeCompany.id, segment)
+    setSegments(prev => [...prev, data])
   }
 
   const saveSegments = async (companyId: string, nextSegments: Array<Omit<AudienceSegment, 'id' | 'company_id' | 'created_at'>>) => {
-    await supabase.from('audience_segments').delete().eq('company_id', companyId)
-    if (nextSegments.length) {
-      const { data } = await supabase
-        .from('audience_segments')
-        .insert(nextSegments.map(segment => ({ ...segment, company_id: companyId })))
-        .select()
-      setSegments((data ?? []) as unknown as AudienceSegment[])
-    } else {
-      setSegments([])
-    }
+    setSegments(await replaceDataverseSegments(companyId, nextSegments))
   }
 
   const removeSegment = async (id: string) => {
-    await supabase.from('audience_segments').delete().eq('id', id)
+    await deleteDataverseSegment(id)
     setSegments(prev => prev.filter(s => s.id !== id))
   }
 
   const addKeyMessage = async (content: string) => {
     if (!activeCompany) return
-    const { data } = await supabase.from('key_messages').insert({ content, company_id: activeCompany.id }).select().single()
-    if (data) setKeyMessages(prev => [...prev, data as unknown as KeyMessage])
+    const data = await createDataverseKeyMessage(activeCompany.id, content)
+    setKeyMessages(prev => [...prev, data])
   }
 
   const removeKeyMessage = async (id: string) => {
-    await supabase.from('key_messages').delete().eq('id', id)
+    await deleteDataverseKeyMessage(id)
     setKeyMessages(prev => prev.filter(m => m.id !== id))
   }
 

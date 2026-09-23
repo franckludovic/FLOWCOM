@@ -243,8 +243,7 @@ export default function PublishingHistoryPage() {
   const { lang } = useI18n()
   const { activeCompany, products, segments, keyMessages } = useCompany()
   const { apiKeyConfigured } = useAuth()
-  const bufferToken = import.meta.env.VITE_BUFFER_API_KEY as string | undefined
-  // Channels + orgId come from the shared context — already fetched, no extra request
+  // Channels + orgId come from the shared context - already fetched, no extra request
   const { channels, orgId, error: bufferCtxError } = useBuffer()
 
   const [allPosts, setAllPosts] = useState<BufferPost[]>([])
@@ -264,20 +263,16 @@ export default function PublishingHistoryPage() {
   // Show context-level Buffer errors (e.g. bad API key)
   useEffect(() => { if (bufferCtxError) setError(bufferCtxError) }, [bufferCtxError])
 
-  // Filters — purely client-side, never trigger a network request
+  // Filters - purely client-side, never trigger a network request
   const [search, setSearch] = useState('')
   const [activeChannelIds, setActiveChannelIds] = useState<string[]>([])
   const [selectedDateRange, setSelectedDateRange] = useState<DateRange>('30d')
   const [showFilters, setShowFilters] = useState(false)
 
-  // ── Core fetch — only fetches POSTS (org+channels already in context) ──────
+  // ── Core fetch - only fetches POSTS (org+channels already in context) ──────
   const fetchPosts = useCallback(async (reset: boolean) => {
-    if (!bufferToken) {
-      setError(lang === 'fr' ? 'Clé API Buffer manquante.' : 'Missing Buffer API key.')
-      return
-    }
-    if (!orgId) {
-      // orgId not ready yet (context still loading) — will retry via useEffect below
+    if (!activeCompany || !orgId) {
+      // orgId not ready yet (context still loading) - will retry via useEffect below
       return
     }
 
@@ -290,7 +285,7 @@ export default function PublishingHistoryPage() {
       if (allChannelIds.length === 0) { setLoading(false); setLoadingMore(false); return }
 
       const cursor = reset ? null : endCursor
-      const pd = await bufferQuery(bufferToken,
+      const pd = await bufferQuery(activeCompany.id,
         `query Posts($first: Int!, $after: String, $input: PostsInput!) {
           posts(first: $first, after: $after, input: $input) {
             edges {
@@ -336,8 +331,8 @@ export default function PublishingHistoryPage() {
       setLoading(false)
       setLoadingMore(false)
     }
-  }, [bufferToken, lang, orgId, channels]) // eslint-disable-line react-hooks/exhaustive-deps
-  // endCursor intentionally omitted — stale closure is fine for cursor-based pagination
+  }, [lang, orgId, channels]) // eslint-disable-line react-hooks/exhaustive-deps
+  // endCursor intentionally omitted - stale closure is fine for cursor-based pagination
 
   // Fetch posts once orgId is available (context finishes loading)
   useEffect(() => {
@@ -346,7 +341,7 @@ export default function PublishingHistoryPage() {
 
   const loadMore = useCallback(() => fetchPosts(false), [fetchPosts])
 
-  // ── AI digest — fires once when posts first load (≥5 posts needed) ────────
+  // ── AI digest - fires once when posts first load (≥5 posts needed) ────────
   useEffect(() => {
     if (digestFiredRef.current) return
     if (allPosts.length < 5) return
@@ -364,10 +359,10 @@ export default function PublishingHistoryPage() {
 
         const ctx = buildAiContext({ company: activeCompany, products, segments, keyMessages })
 
-        const result = await callGroqJSON<{ bullets_fr: string[]; bullets_en: string[]; recommendation_fr: string; recommendation_en: string }>('', [
+        const result = await callGroqJSON<{ bullets_fr: string[]; bullets_en: string[]; recommendation_fr: string; recommendation_en: string }>(activeCompany?.id ?? '', [
           {
             role: 'system',
-            content: `You are a social media analyst. Analyze these recent published posts and identify patterns. Return JSON exactly matching: {"bullets_fr":["string","string","string"],"bullets_en":["string","string","string"],"recommendation_fr":"string","recommendation_en":"string"}. Each bullets array must have exactly 3 short observations (max 12 words each) about: topics covered, channels used, and content style/format patterns — written in French for bullets_fr and English for bullets_en. The recommendation must be one concrete actionable sentence (max 20 words) in each language. Base everything only on the posts provided — do not invent data.\nBrand context:\n${ctx}`,
+            content: `You are a social media analyst. Analyze these recent published posts and identify patterns. Return JSON exactly matching: {"bullets_fr":["string","string","string"],"bullets_en":["string","string","string"],"recommendation_fr":"string","recommendation_en":"string"}. Each bullets array must have exactly 3 short observations (max 12 words each) about: topics covered, channels used, and content style/format patterns - written in French for bullets_fr and English for bullets_en. The recommendation must be one concrete actionable sentence (max 20 words) in each language. Base everything only on the posts provided - do not invent data.\nBrand context:\n${ctx}`,
           },
           { role: 'user', content: `Analyze these ${allPosts.slice(0, 15).length} recent published posts:\n\n${sample}` },
         ], { temperature: 0.3, max_tokens: 500, requiredKeys: ['bullets_fr', 'bullets_en', 'recommendation_fr', 'recommendation_en'] })

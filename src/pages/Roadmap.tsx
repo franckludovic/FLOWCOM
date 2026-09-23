@@ -5,7 +5,11 @@ import { Check, Target, Zap, Bot, RefreshCw, AlertCircle, Calendar, Flag, BookOp
 import { cn } from '@/lib/utils'
 import { callGroq, buildGroqError } from '@/lib/groq'
 import { buildAiContext } from '@/lib/aiContext'
-import { supabase } from '@/lib/supabase'
+import {
+  listDataverseLibraryItems,
+  listDataverseRoadmapMilestones,
+  replaceDataverseRoadmapMilestones,
+} from '@/lib/dataverse'
 
 const MILESTONES = [
   { id: 'm1', phase: 1 },
@@ -59,13 +63,13 @@ export default function RoadmapPage() {
     let cancelled = false
     const loadRoadmapData = async () => {
       if (!activeCompany) return
-      const [{ data: milestones }, { data: library }] = await Promise.all([
-        supabase.from('roadmap_milestones').select('milestone_id').eq('company_id', activeCompany.id).eq('completed', true),
-        supabase.from('library_items').select('status, format, hook').eq('company_id', activeCompany.id),
+      const [milestones, library] = await Promise.all([
+        listDataverseRoadmapMilestones(activeCompany.id),
+        listDataverseLibraryItems(activeCompany.id),
       ])
       if (cancelled) return
-      setManualChecked((milestones ?? []).map(milestone => milestone.milestone_id))
-      setLibraryItems((library ?? []) as typeof libraryItems)
+      setManualChecked(milestones)
+      setLibraryItems(library)
     }
     loadRoadmapData()
     return () => { cancelled = true }
@@ -75,7 +79,7 @@ export default function RoadmapPage() {
     const library = libraryItems
     const validated = library.filter((i: any) => i.status === 'Validated' || i.status === 'Published')
     const published = library.filter((i: any) => i.status === 'Published')
-    const videoCount = library.filter((i: any) => i.format === 'Video' || i.contentType === 'Video').length
+    const videoCount = library.filter((i: any) => i.format?.toLowerCase() === 'video' || i.contentType?.toLowerCase() === 'video').length
     const formats = new Set(library.map((i: any) => i.format || i.contentType).filter(Boolean))
 
     return {
@@ -96,7 +100,7 @@ export default function RoadmapPage() {
     const c = activeCompany
     const library = libraryItems
 
-    // Phase 1 — Foundations
+    // Phase 1 - Foundations
     // M1: Company profile complete (name + industry + description)
     if (c?.name && c?.industry && c?.short_desc) detected.push('m1')
     // M2: Mission, vision, values defined
@@ -108,14 +112,14 @@ export default function RoadmapPage() {
     // M5: Tone and channels defined
     if (c?.tone && c?.channels) detected.push('m5')
 
-    // Phase 2-4 — based on Library
+    // Phase 2-4 - based on Library
     // M7: 4+ posts generated and saved (any status)
     if (library.length >= 4) detected.push('m7')
     // M8: 4+ posts saved to library (Validated or Published)
     const validated = library.filter((i: any) => i.status === 'Validated' || i.status === 'Published')
     if (validated.length >= 4) detected.push('m8')
     // M10: At least 1 video script
-    const hasVideo = library.some((i: any) => i.format === 'Video' || i.contentType === 'Video')
+    const hasVideo = library.some((i: any) => i.format?.toLowerCase() === 'video' || i.contentType?.toLowerCase() === 'video')
     if (hasVideo) detected.push('m10')
     // M11: 2+ different formats used
     const formats = new Set(library.map((i: any) => i.format || i.contentType).filter(Boolean))
@@ -136,14 +140,7 @@ export default function RoadmapPage() {
   useEffect(() => {
     if (!activeCompany) return
     const saveProgress = async () => {
-      await supabase.from('roadmap_milestones').delete().eq('company_id', activeCompany.id)
-      if (manualChecked.length) {
-        await supabase.from('roadmap_milestones').insert(manualChecked.map(milestone_id => ({
-          company_id: activeCompany.id,
-          milestone_id,
-          completed: true,
-        })))
-      }
+      await replaceDataverseRoadmapMilestones(activeCompany.id, manualChecked)
     }
     saveProgress()
   }, [activeCompany?.id, manualChecked])
@@ -176,7 +173,7 @@ export default function RoadmapPage() {
       : `You are FlowCom's AI Strategic Coach. The user has completed ${completed.length} of ${MILESTONES.length} milestones. The next milestone is: "${nextStepText}". Give 2 very short, highly practical, and encouraging tips to achieve this milestone. Do not list other milestones. Use Markdown format. Keep it direct and professional.`
 
     try {
-      const res = await callGroq('', [
+      const res = await callGroq(activeCompany?.id ?? '', [
         { role: 'system', content: prompt },
         { role: 'user', content: context }
       ], { temperature: 0.6 })

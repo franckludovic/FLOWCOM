@@ -19,7 +19,7 @@ export function AppShell() {
       <div className="flex flex-col flex-1 min-w-0">
         <Header onToggleMobileMenu={() => setMobileOpen(prev => !prev)} />
         <main className="flex-1 flex flex-col min-h-0 overflow-y-auto relative">
-          {/* Error boundary per page — a crash here keeps the sidebar/header alive */}
+          {/* Error boundary per page - a crash here keeps the sidebar/header alive */}
           <ErrorBoundary>
             <Outlet />
           </ErrorBoundary>

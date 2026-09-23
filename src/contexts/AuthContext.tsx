@@ -2,12 +2,20 @@ import {
   createContext, useContext, useState, useEffect,
   useCallback, type ReactNode
 } from 'react'
+import { getContext } from '@microsoft/power-apps/app'
 import { supabase } from '@/lib/supabase'
-import type { User, Session } from '@supabase/supabase-js'
+import type { Session } from '@supabase/supabase-js'
 import type { Profile } from '@/types'
+import { getOrCreateDataverseProfile, updateDataverseProfile } from '@/lib/dataverse'
+
+export interface AppUser {
+  id: string
+  email?: string
+  user_metadata?: { name?: string; full_name?: string }
+}
 
 interface AuthContextValue {
-  user: User | null
+  user: AppUser | null
   profile: Profile | null
   session: Session | null
   loading: boolean
@@ -16,55 +24,80 @@ interface AuthContextValue {
   signUp: (name: string, email: string, password: string) => Promise<string | null>
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
-  updateApiKey: (key: string) => Promise<void>
+  updateApiKey: (key: string, companyId?: string) => Promise<void>
   updateProfile: (updates: Partial<Profile>) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<AppUser | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false)
 
-  const fetchProfile = useCallback(async (userId: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, name, email, lang, created_at')
-      .eq('id', userId)
-      .single()
-    if (data) {
-      const profileData = data as unknown as Profile
-      setProfile(profileData)
+  const fetchProfile = useCallback(async (authUser: AppUser, checkSupabaseKey = false) => {
+    const profileData = await getOrCreateDataverseProfile(authUser)
+    setProfile(profileData)
+    if (checkSupabaseKey) try {
       const { data: keyStatus } = await supabase.functions.invoke<{ configured?: boolean }>('groq', {
         body: { status: true },
       })
       setApiKeyConfigured(Boolean(keyStatus?.configured))
+    } catch {
+      setApiKeyConfigured(false)
     }
   }, [])
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      if (session?.user) fetchProfile(session.user.id)
-      setLoading(false)
-    })
+    let cancelled = false
+    let subscription: { unsubscribe: () => void } | undefined
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        fetchProfile(session.user.id)
-      } else {
-        setProfile(null)
-        setApiKeyConfigured(false)
+    const bootstrap = async () => {
+      try {
+        const context = await getContext()
+        const objectId = context.user.objectId
+        if (!objectId) throw new Error('Power Apps did not provide a user identity')
+
+        const hostUser: AppUser = {
+          id: objectId,
+          email: context.user.userPrincipalName,
+          user_metadata: { name: context.user.fullName },
+        }
+        if (!cancelled) setUser(hostUser)
+        await fetchProfile(hostUser)
+      } catch {
+        // Keep Supabase authentication available only for local development.
+        // Power Apps production runs on the Entra identity supplied by getContext().
+        if (!import.meta.env.DEV) return
+        const initial = await supabase.auth.getSession()
+        if (cancelled) return
+        setSession(initial.data.session)
+        setUser(initial.data.session?.user ?? null)
+        if (initial.data.session?.user) await fetchProfile(initial.data.session.user, true)
+
+        const authState = supabase.auth.onAuthStateChange((_event, nextSession) => {
+          setSession(nextSession)
+          setUser(nextSession?.user ?? null)
+          if (nextSession?.user) {
+            void fetchProfile(nextSession.user, true)
+          } else {
+            setProfile(null)
+            setApiKeyConfigured(false)
+          }
+        })
+        subscription = authState.data.subscription
+      } finally {
+        if (!cancelled) setLoading(false)
       }
-    })
+    }
 
-    return () => subscription.unsubscribe()
+    void bootstrap()
+    return () => {
+      cancelled = true
+      subscription?.unsubscribe()
+    }
   }, [fetchProfile])
 
   const signIn = async (email: string, password: string): Promise<string | null> => {
@@ -77,25 +110,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signUp = async (name: string, email: string, password: string): Promise<string | null> => {
-    const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name } } })
+    const { error } = await supabase.auth.signUp({ email, password, options: { data: { name } } })
     if (error) {
       if (error.message.includes('already registered')) return 'auth.emailExists'
       return 'auth.error'
-    }
-    // Create profile row
-    if (data.user) {
-      await supabase.from('profiles').insert({
-        id: data.user.id,
-        name,
-        email,
-        api_key: null,
-        lang: 'fr',
-      })
     }
     return null
   }
 
   const signInWithGoogle = async () => {
+    if (!import.meta.env.DEV) return
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${window.location.origin}/workspace` },
@@ -104,18 +128,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     setApiKeyConfigured(false)
-    await supabase.auth.signOut()
+    if (session) await supabase.auth.signOut()
   }
 
-  const updateApiKey = async (key: string) => {
+  const updateApiKey = async (key: string, companyId?: string) => {
     if (!user) return
-    await supabase.from('profiles').update({ api_key: key }).eq('id', user.id)
+    if (!session) throw new Error('AI integrations must be connected through the Power Platform backend.')
+    if (companyId) {
+      const { data, error } = await supabase.functions.invoke<{ connected?: boolean; error?: string }>('save-groq-integration', {
+        body: { companyId, accessToken: key },
+      })
+      if (error || !data?.connected) throw new Error(data?.error ?? error?.message ?? 'Unable to save company AI key')
+    }
     setApiKeyConfigured(Boolean(key))
+    setProfile(prev => prev ? { ...prev, api_key: key } : prev)
   }
 
   const updateProfile = async (updates: Partial<Profile>) => {
-    if (!user) return
-    await supabase.from('profiles').update(updates).eq('id', user.id)
+    if (!profile) return
+    await updateDataverseProfile(profile.id, updates)
     setProfile(prev => prev ? { ...prev, ...updates } : prev)
   }
 

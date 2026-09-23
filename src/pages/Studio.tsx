@@ -6,9 +6,9 @@ import { useCompany } from '@/contexts/CompanyContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBuffer, bufferQuery } from '@/contexts/BufferContext'
-import { supabase } from '@/lib/supabase'
 import { callGroq, buildGroqError } from '@/lib/groq'
 import { buildAiContext } from '@/lib/aiContext'
+import { listDataverseLibraryItems, updateDataverseLibraryItem } from '@/lib/dataverse'
 import {
   Send, Check, Loader2, AlertCircle, CheckSquare,
   Upload, X, Smile, Wand2, RotateCcw, Hash, Film, Briefcase, Layers, Search,
@@ -422,7 +422,7 @@ function splitBodyAndTags(item: any, keepJoined: boolean): { body: string; tags:
     return { body: bodyClean || rawBody, tags: rawTags }
   }
 
-  // No dedicated hashtags field — try to extract trailing #tags from body
+  // No dedicated hashtags field - try to extract trailing #tags from body
   const match = rawBody.match(/^([\s\S]*?)\n{1,2}((?:#\w+\s*)+)$/)
   if (match) {
     return { body: match[1].trimEnd(), tags: match[2].trim() }
@@ -439,8 +439,6 @@ export default function StudioPage() {
   const { apiKeyConfigured } = useAuth()
   const { channels, loading: loadingProfiles, error: bufferError } = useBuffer()
   const [searchParams] = useSearchParams()
-  const bufferToken = import.meta.env.VITE_BUFFER_API_KEY as string
-
   const [toast, setToast]   = useState(bufferError ? bufferError : '')
   const dismissToast        = useCallback(() => setToast(''), [])
 
@@ -477,7 +475,7 @@ export default function StudioPage() {
   const [preCheckModal, setPreCheckModal]   = useState<{ issues_fr: string[]; issues_en: string[] } | null>(null)
   const [preCheckLoading, setPreCheckLoading] = useState(false)
 
-  // Scheduling — empty string means "publish now"
+  // Scheduling - empty string means "publish now"
   const [scheduledAt, setScheduledAt] = useState('')
   const [showScheduler, setShowScheduler] = useState(false)
 
@@ -489,9 +487,8 @@ export default function StudioPage() {
   useEffect(() => {
     let alive = true
     if (!activeCompany) { setLibraryItems([]); return }
-    supabase.from('library_items').select('*').eq('company_id', activeCompany.id)
-      .order('created_at', { ascending: false })
-      .then(({ data }) => { if (alive) setLibraryItems(data ?? []) })
+    listDataverseLibraryItems(activeCompany.id)
+      .then(data => { if (alive) setLibraryItems(data) })
     return () => { alive = false }
   }, [activeCompany?.id])
 
@@ -499,7 +496,7 @@ export default function StudioPage() {
   const presetRef = useRef<Preset>(preset)
   useEffect(() => { presetRef.current = preset }, [preset])
 
-  // URL param preload — waits for libraryItems to be populated before applying
+  // URL param preload - waits for libraryItems to be populated before applying
   const pendingItemId = useRef<string | null>(null)
 
   useEffect(() => {
@@ -573,7 +570,7 @@ export default function StudioPage() {
     setToningId(tone.id); setToneError('')
     try {
       const ctx = buildAiContext({ company: activeCompany, products, segments, keyMessages })
-      const result = await callGroq('', [
+      const result = await callGroq(activeCompany?.id ?? '', [
         { role: 'system', content: `You are a social media copywriter. ${tone.prompt}\n\nBrand context:\n${ctx}\n\nReturn ONLY the rewritten post. No explanation, no quotes. Respond in ${lang === 'fr' ? 'French' : 'English'}.` },
         { role: 'user', content: text },
       ], { temperature: 0.75, max_tokens: 1024 })
@@ -587,13 +584,13 @@ export default function StudioPage() {
     } finally { setToningId(null) }
   }, [content, apiKeyConfigured, lang, activeCompany, products, segments, keyMessages])
 
-  // Pre-publish AI check — fast, non-blocking
+  // Pre-publish AI check - fast, non-blocking
   const handlePreCheck = async () => {
     const fullText = (preset !== 'professional' && hashtags.trim())
       ? `${content.trim()}\n\n${hashtags.trim()}` : content.trim()
-    if (!fullText || selectedProfiles.length === 0) return
+    if (!activeCompany || !fullText || selectedProfiles.length === 0) return
 
-    // Skip AI check if Groq not configured — go straight to publish
+    // Skip AI check if Groq not configured - go straight to publish
     if (!apiKeyConfigured) { handlePublish(); return }
 
     setPreCheckLoading(true)
@@ -604,7 +601,7 @@ export default function StudioPage() {
       const charLimit = presetCfg.charLimit
       const ctx = buildAiContext({ company: activeCompany, products, segments, keyMessages })
 
-      const result = await callGroq('', [
+      const result = await callGroq(activeCompany?.id ?? '', [
         {
           role: 'system',
           content: `You are a social media publishing assistant doing a quick pre-flight check. Analyze this post and return ONLY a JSON object: {"issues_fr":["string"],"issues_en":["string"]} with 0–2 issues each (max 15 words per issue). issues_fr in French, issues_en in English. Flag ONLY real problems: missing CTA when the goal is conversion, text significantly over the ${charLimit}-char limit for ${preset}, tone clearly mismatched with the brand. If the post is fine, return {"issues_fr":[],"issues_en":[]}. Do not invent issues. Brand context:\n${ctx}`,
@@ -626,7 +623,7 @@ export default function StudioPage() {
         setPreCheckModal({ issues_fr, issues_en })
       }
     } catch {
-      // AI check failed — don't block publishing
+      // AI check failed - don't block publishing
       handlePublish()
     } finally {
       setPreCheckLoading(false)
@@ -636,10 +633,10 @@ export default function StudioPage() {
   // Publish
   const handlePublish = async () => {
     // Professional: hashtags are already merged into the body text.
-    // Feed / Short-form: hashtags live in a separate field — append them.
+    // Feed / Short-form: hashtags live in a separate field - append them.
     const fullText = (preset !== 'professional' && hashtags.trim())
       ? `${content.trim()}\n\n${hashtags.trim()}` : content.trim()
-    if (!fullText || selectedProfiles.length === 0) return
+    if (!activeCompany || !fullText || selectedProfiles.length === 0) return
     setIsPublishing(true)
     try {
       let um = media
@@ -662,7 +659,7 @@ export default function StudioPage() {
           ? `schedulingType: customScheduled, mode: customScheduled, dueAt: "${new Date(scheduledAt).toISOString()}"`
           : `schedulingType: automatic, mode: shareNow`
 
-        return bufferQuery(bufferToken, `
+        return bufferQuery(activeCompany.id, `
           mutation CreatePost($text: String!, $channelId: ChannelId!) {
             createPost(input: { text: $text, channelId: $channelId,
               ${schedulingBlock} ${meta}
@@ -675,7 +672,7 @@ export default function StudioPage() {
       const err = results.find(r => r?.createPost?.message)
       if (err) throw new Error(err.createPost.message)
       if (selectedItemId) {
-        await supabase.from('library_items').update({ status: 'Published' }).eq('id', selectedItemId)
+        await updateDataverseLibraryItem(selectedItemId, { status: 'Published' })
         setLibraryItems(items => items.map(i => i.id === selectedItemId ? { ...i, status: 'Published' } : i))
         window.dispatchEvent(new Event('flowcom:data-updated'))
       }

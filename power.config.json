@@ -1,0 +1,81 @@
+{
+  "version": "1.0",
+  "appId": "ee37bbf2-90e2-4725-95f3-5ef5cd4f2575",
+  "appDisplayName": "FlowCom",
+  "region": "prod",
+  "appType": "CodeApp",
+  "environmentId": "7a0e4eed-419e-ec1f-b18f-db53cd2b62f3",
+  "description": " ",
+  "buildPath": "./dist",
+  "buildEntryPoint": "index.html",
+  "localAppUrl": "http://localhost:5173",
+  "logoPath": "Default",
+  "connectionReferences": {},
+  "databaseReferences": {
+    "default.cds": {
+      "dataSources": {
+        "companies": {
+          "entitySetName": "fc_companies",
+          "logicalName": "fc_company",
+          "isHidden": false
+        },
+        "flowcomprofiles": {
+          "entitySetName": "fc_flowcomprofiles",
+          "logicalName": "fc_flowcomprofile",
+          "isHidden": false
+        },
+        "companymemberships": {
+          "entitySetName": "fc_companymemberships",
+          "logicalName": "fc_companymembership",
+          "isHidden": false
+        },
+        "products": {
+          "entitySetName": "fc_products",
+          "logicalName": "fc_product",
+          "isHidden": false
+        },
+        "audiencesegments": {
+          "entitySetName": "fc_audiencesegments",
+          "logicalName": "fc_audiencesegment",
+          "isHidden": false
+        },
+        "keymessages": {
+          "entitySetName": "fc_keymessages",
+          "logicalName": "fc_keymessage",
+          "isHidden": false
+        },
+        "calendaritems": {
+          "entitySetName": "fc_calendaritems",
+          "logicalName": "fc_calendaritem",
+          "isHidden": false
+        },
+        "libraryitems": {
+          "entitySetName": "fc_libraryitems",
+          "logicalName": "fc_libraryitem",
+          "isHidden": false
+        },
+        "roadmapmilestones": {
+          "entitySetName": "fc_roadmapmilestones",
+          "logicalName": "fc_roadmapmilestone",
+          "isHidden": false
+        },
+        "weeklyreports": {
+          "entitySetName": "fc_weeklyreports",
+          "logicalName": "fc_weeklyreport",
+          "isHidden": false
+        },
+        "contentscores": {
+          "entitySetName": "fc_contentscores",
+          "logicalName": "fc_contentscore",
+          "isHidden": false
+        },
+        "companyintegrations": {
+          "entitySetName": "fc_companyintegrations",
+          "logicalName": "fc_companyintegration",
+          "isHidden": false
+        }
+      },
+      "environmentVariableName": ""
+    }
+  }
+}

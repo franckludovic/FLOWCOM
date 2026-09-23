@@ -4,21 +4,23 @@
  * Fetches org ID + channels ONCE when the app mounts, caches for the session.
  *
  * All Buffer API calls go through the Supabase Edge Function `buffer` which
- * keeps BUFFER_API_KEY server-side. Works in dev AND production — no Vite proxy needed.
+ * keeps each company's Buffer credential server-side. Works in dev AND
+ * production - no Vite proxy needed.
  */
 
 import {
   createContext, useContext, useState, useEffect, useCallback, type ReactNode
 } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useCompany } from './CompanyContext'
 
 // ─── Shared Buffer query helper ───────────────────────────────────────────────
-// _token param kept for call-site compatibility but is no longer used —
-// the Edge Function reads the key from Supabase secrets.
+// The Edge Function reads the Buffer key from Supabase secrets. No provider
+// credential is accepted from or bundled into the browser application.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function bufferQuery(_token: string, query: string, variables?: object): Promise<any> {
+export async function bufferQuery(companyId: string, query: string, variables?: object): Promise<any> {
   const { data, error } = await supabase.functions.invoke('buffer', {
-    body: { query, variables },
+    body: { companyId, query, variables },
   })
   if (error) {
     const ctx = (error as { context?: { json?: () => Promise<{ error?: string }> } }).context
@@ -50,10 +52,7 @@ interface BufferContextValue {
 const BufferContext = createContext<BufferContextValue | null>(null)
 
 export function BufferProvider({ children }: { children: ReactNode }) {
-  // Token is no longer needed client-side — kept only so existing call sites
-  // that pass it as an argument don't need to change.
-  const token = import.meta.env.VITE_BUFFER_API_KEY as string | undefined ?? ''
-
+  const { activeCompany } = useCompany()
   const [orgId, setOrgId]       = useState<string | null>(null)
   const [channels, setChannels] = useState<BufferChannel[]>([])
   const [loading, setLoading]   = useState(false)
@@ -64,19 +63,26 @@ export function BufferProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let alive = true
+    if (!activeCompany) {
+      setOrgId(null)
+      setChannels([])
+      setError('')
+      setLoading(false)
+      return () => { alive = false }
+    }
     setLoading(true)
     setError('')
 
     ;(async () => {
       try {
-        const acc = await bufferQuery(token, `{ account { organizations { id } } }`)
+        const acc = await bufferQuery(activeCompany.id, `{ account { organizations { id } } }`)
         const id: string | undefined = acc?.account?.organizations?.[0]?.id
         if (!id) throw new Error('No Buffer organization found.')
         if (!alive) return
         setOrgId(id)
 
         const cd = await bufferQuery(
-          token,
+          activeCompany.id,
           `query Channels($input: ChannelsInput!) {
             channels(input: $input) { id name service avatar }
           }`,
@@ -92,7 +98,7 @@ export function BufferProvider({ children }: { children: ReactNode }) {
     })()
 
     return () => { alive = false }
-  }, [fetchKey]) // token intentionally omitted — it's static and the Edge Function owns it
+  }, [fetchKey, activeCompany?.id])
 
   return (
     <BufferContext.Provider value={{ orgId, channels, loading, error, refreshChannels }}>

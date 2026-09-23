@@ -1,0 +1,153 @@
+openapi: 3.0.1
+info:
+  title: FlowCom Provider Backend
+  version: 1.0.0
+  description: Secure Groq and Buffer integration proxy for the FlowCom Code App.
+servers:
+  - url: https://<function-app-name>.azurewebsites.net/api
+paths:
+  /integrations/groq:
+    post:
+      operationId: connectGroq
+      summary: Store a company Groq key
+      security:
+        - entraOAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntegrationRequest'
+      responses:
+        '200':
+          description: Groq connected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectedResponse'
+  /integrations/buffer:
+    post:
+      operationId: connectBuffer
+      summary: Store a company Buffer token
+      security:
+        - entraOAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntegrationRequest'
+      responses:
+        '200':
+          description: Buffer connected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BufferConnectedResponse'
+  /providers/groq:
+    post:
+      operationId: proxyGroq
+      summary: Generate a Groq completion for a company
+      security:
+        - entraOAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroqRequest'
+      responses:
+        '200':
+          description: Groq response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroqResponse'
+  /providers/buffer:
+    post:
+      operationId: proxyBuffer
+      summary: Execute a Buffer GraphQL query for a company
+      security:
+        - entraOAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+components:
+  securitySchemes:
+    entraOAuth:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/authorize
+          tokenUrl: https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token
+          scopes:
+            api://<function-app-registration-client-id>/.default: Access FlowCom provider backend
+  schemas:
+    IntegrationRequest:
+      type: object
+      required: [companyId, accessToken]
+      properties:
+        companyId:
+          type: string
+          format: uuid
+        accessToken:
+          type: string
+          format: password
+    ConnectedResponse:
+      type: object
+      properties:
+        connected:
+          type: boolean
+    BufferConnectedResponse:
+      allOf:
+        - $ref: '#/components/schemas/ConnectedResponse'
+        - type: object
+          properties:
+            organizationId:
+              type: string
+            organizationName:
+              type: string
+              nullable: true
+    GroqRequest:
+      type: object
+      required: [companyId, messages]
+      properties:
+        companyId:
+          type: string
+          format: uuid
+        messages:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        options:
+          type: object
+          properties:
+            temperature:
+              type: number
+            max_tokens:
+              type: integer
+            json:
+              type: boolean
+        status:
+          type: boolean
+    GroqResponse:
+      type: object
+      properties:
+        content:
+          type: string
+    BufferRequest:
+      type: object
+      required: [companyId, query]
+      properties:
+        companyId:
+          type: string
+          format: uuid
+        query:
+          type: string
+        variables:
+          type: object
+          additionalProperties: true

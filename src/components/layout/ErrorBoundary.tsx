@@ -38,7 +38,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (!this.state.hasError) return this.props.children
 
     if (this.props.inline) {
-      // Compact inline variant — used around individual page sections
+      // Compact inline variant - used around individual page sections
       return (
         <div className="flex items-center gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-400">
           <AlertTriangle className="w-4 h-4 shrink-0" />
@@ -64,7 +64,7 @@ export class ErrorBoundary extends Component<Props, State> {
             Something went wrong
           </h2>
           <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">
-            An unexpected error occurred in this part of the app. Your data is safe — this is a display error only.
+            An unexpected error occurred in this part of the app. Your data is safe - this is a display error only.
           </p>
           {this.state.error && (
             <p className="text-xs font-mono text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-lg mt-2 text-left break-all">

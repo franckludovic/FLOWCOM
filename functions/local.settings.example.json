@@ -1,0 +1,10 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "DATAVERSE_URL": "https://your-org.crm.dynamics.com",
+    "KEY_VAULT_URL": "https://your-vault.vault.azure.net",
+    "INVITATION_REDIRECT_URL": "https://myapps.microsoft.com"
+  }
+}

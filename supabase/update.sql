@@ -58,7 +58,7 @@ CREATE POLICY "Users manage own reports" ON public.weekly_reports
 create table if not exists public.content_scores (
   id          uuid primary key default gen_random_uuid(),
   company_id  uuid references public.companies(id) on delete cascade not null,
-  item_id     uuid not null,   -- references library_items.id (soft ref — no FK so deletes don't cascade errors)
+  item_id     uuid not null,   -- references library_items.id (soft ref - no FK so deletes don't cascade errors)
   score       text not null,   -- 'ready' | 'good' | 'needs-work'
   scored_at   timestamptz not null default now(),
   unique(company_id, item_id)

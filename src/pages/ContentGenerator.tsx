@@ -14,9 +14,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import { callGroqJSON, buildGroqError } from '@/lib/groq'
 import { buildAiContext } from '@/lib/aiContext'
 import { supabase } from '@/lib/supabase'
-import { toLibraryInsert } from '@/lib/dataMappers'
+import { createDataverseLibraryItem } from '@/lib/dataverse'
 import { cn } from '@/lib/utils'
-import { HfInference } from '@huggingface/inference'
 
 // ─── Types ─────────────────────────────────────────────────────
 interface GeneratedPost {
@@ -154,31 +153,32 @@ export default function ContentGeneratorPage() {
 
   useEffect(() => {
     if (!post?.visualIdea) return
-    const hfToken = import.meta.env.VITE_HF_ACCESS_TOKEN
-    if (!hfToken) {
-      setHfImageUrl('')
-      return
-    }
 
     let active = true
+    let imageUrl: string | null = null
     const fetchImage = async () => {
       setGeneratingImage(true)
       try {
-        const hf = new HfInference(hfToken)
-        const blob = await hf.textToImage({
-          model: 'black-forest-labs/FLUX.1-schnell',
-          inputs: post.visualIdea
+        const { data, error, response } = await supabase.functions.invoke('generate-image', {
+          body: { prompt: post.visualIdea, seed: imageSeed },
         })
-        if (active) setHfImageUrl(typeof blob === 'string' ? blob : URL.createObjectURL(blob as unknown as Blob))
+        if (error) throw error
+        if (!(data instanceof Blob)) throw new Error('Image service returned an invalid response')
+        const contentType = response?.headers.get('X-Image-Content-Type') || 'image/jpeg'
+        imageUrl = URL.createObjectURL(new Blob([data], { type: contentType }))
+        if (active) setHfImageUrl(imageUrl)
       } catch (err) {
-        console.error("HF fetch failed", err)
+        console.error('Image generation failed', err)
         if (active) setHfImageUrl('') 
       } finally {
         if (active) setGeneratingImage(false)
       }
     }
     fetchImage()
-    return () => { active = false }
+    return () => {
+      active = false
+      if (imageUrl) URL.revokeObjectURL(imageUrl)
+    }
   }, [post?.visualIdea, imageSeed])
 
   // Save to localStorage when things change
@@ -239,7 +239,7 @@ ${formatInstructions}
 Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
 
     try {
-      const generated = await callGroqJSON<GeneratedPost>('', [{ role: 'system', content: sys }, { role: 'user', content: usr }], { temperature: 0.8, max_tokens: 3000, requiredKeys: ['content', 'visualIdea'] })
+      const generated = await callGroqJSON<GeneratedPost>(activeCompany?.id ?? '', [{ role: 'system', content: sys }, { role: 'user', content: usr }], { temperature: 0.8, max_tokens: 3000, requiredKeys: ['content', 'visualIdea'] })
       setImageSeed(Date.now())
       setPost(generated)
     } catch (e) { setError(t(buildGroqError(e) as Parameters<typeof t>[0])) }
@@ -252,19 +252,21 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
       setError(lang === 'fr' ? 'Aucune entreprise active.' : 'No active company.')
       return
     }
-    const draft = toLibraryInsert({
+    const draft = {
       title: topic,
       hook: post.content.split('\n')[0] ?? '',
       episode_context: '', body: post.content,
       conclusion: '', reward: '', cta: '',
       hashtags: '', visual_idea: post.visualIdea ?? '',
       video_script: contentType === 'Video' ? post.content : '',
-      channel, format: contentType.toLowerCase(),
+      channel,
+      format: contentType === 'Carousel' ? 'carousel' : contentType === 'Video' ? 'video' : 'post',
       tone, status: 'Draft', publish_date: null,
-    }, activeCompany.id)
-    const { error } = await supabase.from('library_items').insert(draft)
-    if (error) {
-      setError(buildGroqError(error))
+    } as const
+    try {
+      await createDataverseLibraryItem(activeCompany.id, draft)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unable to save content')
       return
     }
     window.dispatchEvent(new Event('flowcom:data-updated'))
@@ -274,7 +276,7 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
   const channelMeta = CHANNEL_MAP[channel]
   const hasOutput = !!post
 
-  // ── Hook scorer — fires automatically 600ms after generation completes ────
+  // ── Hook scorer - fires automatically 600ms after generation completes ────
   useEffect(() => {
     if (!post?.content || !apiKeyConfigured) { setHookScore(null); return }
     const hook = post.content.split('\n').find(l => l.trim().length > 0) ?? ''
@@ -284,10 +286,10 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
       setHookScoring(true)
       try {
         type ScoreResult = { scrollStop: string; clarity: string; intrigue: string; suggestion_fr: string; suggestion_en: string }
-        const result = await callGroqJSON<ScoreResult>('', [
+        const result = await callGroqJSON<ScoreResult>(activeCompany?.id ?? '', [
           {
             role: 'system',
-            content: `You are a social media hook analyst. Score this hook on 3 axes. Return JSON exactly: {"scrollStop":"Weak|Good|Strong","clarity":"Weak|Good|Strong","intrigue":"Weak|Good|Strong","suggestion_fr":"amélioration concrète en max 15 mots","suggestion_en":"one concrete improvement in max 15 words"}. Be honest and strict — most hooks are Weak or Good, Strong is rare.`,
+            content: `You are a social media hook analyst. Score this hook on 3 axes. Return JSON exactly: {"scrollStop":"Weak|Good|Strong","clarity":"Weak|Good|Strong","intrigue":"Weak|Good|Strong","suggestion_fr":"amélioration concrète en max 15 mots","suggestion_en":"one concrete improvement in max 15 words"}. Be honest and strict - most hooks are Weak or Good, Strong is rare.`,
           },
           { role: 'user', content: `Hook: "${hook}"\nChannel: ${CHANNEL_MAP[channel]?.label ?? channel}\nTone: ${tone}` },
         ], { temperature: 0.2, max_tokens: 180, requiredKeys: ['scrollStop', 'clarity', 'intrigue', 'suggestion_fr', 'suggestion_en'] })
@@ -298,7 +300,7 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
           scoredContentRef.current = hook
         }
       } catch {
-        // Silently fail — non-critical
+        // Silently fail - non-critical
       } finally {
         setHookScoring(false)
       }
@@ -420,14 +422,14 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
               className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)] text-sm text-[var(--color-text)] outline-none focus:ring-2 focus:ring-violet-500 placeholder:text-[var(--color-text-muted)]" />
           </div>
 
-          {/* Notes — full width */}
+          {/* Notes - full width */}
           <div className="space-y-2 md:col-span-2">
             <label className="block text-xs font-semibold text-[var(--color-text)]">
               <span className="inline-flex items-center gap-1.5">
                 <StickyNote className="w-3.5 h-3.5 text-amber-500" />
                 {lang === 'fr' ? 'Notes & Instructions spécifiques' : 'Notes & Specific Instructions'}
                 <span className="text-[10px] font-normal text-[var(--color-text-muted)] italic">
-                  {lang === 'fr' ? '(optionnel — l\'IA les suit strictement)' : '(optional — AI follows strictly)'}
+                  {lang === 'fr' ? '(optionnel - l\'IA les suit strictement)' : '(optional - AI follows strictly)'}
                 </span>
               </span>
             </label>
@@ -560,7 +562,7 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
                   {post.visualIdea.trim() ? (
                     <>
                       <img
-                        src={import.meta.env.VITE_HF_ACCESS_TOKEN && hfImageUrl ? hfImageUrl : `https://image.pollinations.ai/prompt/${encodeURIComponent(post.visualIdea.replace(/\n/g, ' ').trim().substring(0, 800))}?width=1024&height=1024&nologo=true&seed=${imageSeed}`}
+                        src={hfImageUrl || `https://image.pollinations.ai/prompt/${encodeURIComponent(post.visualIdea.replace(/\n/g, ' ').trim().substring(0, 800))}?width=1024&height=1024&nologo=true&seed=${imageSeed}`}
                         alt="AI Generated Visual"
                         className={cn("w-full h-full object-cover transition-opacity duration-300", generatingImage ? "opacity-30" : "opacity-100")}
                         loading="lazy"

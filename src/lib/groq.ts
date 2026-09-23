@@ -27,20 +27,20 @@ export function validateGroqJSON(value: unknown, requiredKeys: string[] = []): b
 }
 
 export async function callGroq(
-  _apiKey: string,
+  companyId: string,
   messages: GroqMessage[],
   options?: GroqOptions
 ): Promise<string> {
-  const { data } = await invokeGroq({ messages, options })
+  const { data } = await invokeGroq({ companyId, messages, options })
   return data?.content ?? ''
 }
 
 export async function callGroqJSON<T>(
-  _apiKey: string,
+  companyId: string,
   messages: GroqMessage[],
   options?: GroqOptions
 ): Promise<T> {
-  const { data } = await invokeGroq({ messages, options: { ...options, json: true } })
+  const { data } = await invokeGroq({ companyId, messages, options: { ...options, json: true } })
 
   const raw = data?.content ?? '{}'
   try {
@@ -52,7 +52,7 @@ export async function callGroqJSON<T>(
   }
 }
 
-async function invokeGroq(body: { messages: GroqMessage[]; options?: GroqOptions }) {
+async function invokeGroq(body: { companyId: string; messages: GroqMessage[]; options?: GroqOptions }) {
   const request = supabase.functions.invoke<{ content?: string; error?: string }>('groq', { body })
   const timeout = new Promise<never>((_, reject) => {
     window.setTimeout(() => reject(new Error('AI request timed out')), 30000)
