@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import {
   Brain, Copy, Check, Plus, Trash2, RefreshCw,
   ChevronDown, ChevronRight, Sparkles, Shield,
@@ -148,6 +148,28 @@ export default function MemoryPage() {
     channels:   activeCompany?.channels    ?? '',
     frequency:  activeCompany?.frequency   ?? '',
   })
+
+  // The active company is loaded asynchronously from Dataverse. Hydrate the
+  // form when it becomes available instead of keeping the initial blank state.
+  useEffect(() => {
+    if (!activeCompany) return
+    setForm({
+      name:       activeCompany.name        ?? '',
+      industry:   activeCompany.industry    ?? '',
+      location:   activeCompany.location    ?? '',
+      website:    activeCompany.website     ?? '',
+      short_desc: activeCompany.short_desc  ?? '',
+      logo_url:   activeCompany.logo_url    ?? '',
+      mission:    activeCompany.mission     ?? '',
+      vision:     activeCompany.vision      ?? '',
+      values:     activeCompany.values      ?? '',
+      tone:       activeCompany.tone        ?? '',
+      targets:    activeCompany.targets     ?? '',
+      channels:   activeCompany.channels    ?? '',
+      frequency:  activeCompany.frequency   ?? '',
+    })
+  }, [activeCompany])
+
   const set = (k: keyof typeof form) => (v: string) => setForm(f => ({ ...f, [k]: v }))
 
   const [newProduct, setNewProduct]   = useState({ name: '', description: '' })

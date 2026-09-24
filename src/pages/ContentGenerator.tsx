@@ -11,7 +11,7 @@ import {
 import { useI18n } from '@/contexts/I18nContext'
 import { useCompany } from '@/contexts/CompanyContext'
 import { useAuth } from '@/contexts/AuthContext'
-import { callGroqJSON, buildGroqError } from '@/lib/groq'
+import { callModelJSON, buildModelError } from '@/lib/model'
 import { buildAiContext } from '@/lib/aiContext'
 import { supabase } from '@/lib/supabase'
 import { createDataverseLibraryItem } from '@/lib/dataverse'
@@ -239,10 +239,10 @@ ${formatInstructions}
 Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
 
     try {
-      const generated = await callGroqJSON<GeneratedPost>(activeCompany?.id ?? '', [{ role: 'system', content: sys }, { role: 'user', content: usr }], { temperature: 0.8, max_tokens: 3000, requiredKeys: ['content', 'visualIdea'] })
+      const generated = await callModelJSON<GeneratedPost>(activeCompany?.id ?? '', [{ role: 'system', content: sys }, { role: 'user', content: usr }], { temperature: 0.8, max_tokens: 3000, requiredKeys: ['content', 'visualIdea'] })
       setImageSeed(Date.now())
       setPost(generated)
-    } catch (e) { setError(t(buildGroqError(e) as Parameters<typeof t>[0])) }
+    } catch (e) { setError(t(buildModelError(e) as Parameters<typeof t>[0])) }
     setLoading(false)
   }
 
@@ -286,7 +286,7 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
       setHookScoring(true)
       try {
         type ScoreResult = { scrollStop: string; clarity: string; intrigue: string; suggestion_fr: string; suggestion_en: string }
-        const result = await callGroqJSON<ScoreResult>(activeCompany?.id ?? '', [
+        const result = await callModelJSON<ScoreResult>(activeCompany?.id ?? '', [
           {
             role: 'system',
             content: `You are a social media hook analyst. Score this hook on 3 axes. Return JSON exactly: {"scrollStop":"Weak|Good|Strong","clarity":"Weak|Good|Strong","intrigue":"Weak|Good|Strong","suggestion_fr":"amélioration concrète en max 15 mots","suggestion_en":"one concrete improvement in max 15 words"}. Be honest and strict - most hooks are Weak or Good, Strong is rare.`,

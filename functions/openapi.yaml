@@ -75,6 +75,45 @@ paths:
           application/json:
             schema:
               type: object
+  /providers/image:
+    post:
+      operationId: generateImage
+      summary: Generate an image through Hugging Face
+      security:
+        - entraOAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageRequest'
+      responses:
+        '200':
+          description: Generated image bytes
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+  /members/invite:
+    post:
+      operationId: inviteMember
+      summary: Invite a member to a company
+      security:
+        - entraOAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteRequest'
+      responses:
+        '200':
+          description: Invitation sent
+          content:
+            application/json:
+              schema:
+                type: object
 components:
   securitySchemes:
     entraOAuth:
@@ -151,3 +190,24 @@ components:
         variables:
           type: object
           additionalProperties: true
+    ImageRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+        seed:
+          type: integer
+    InviteRequest:
+      type: object
+      required: [companyId, email, role]
+      properties:
+        companyId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [admin, editor, viewer]

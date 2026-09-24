@@ -7,7 +7,7 @@ import { useI18n } from '@/contexts/I18nContext'
 import { useCompany } from '@/contexts/CompanyContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBuffer, bufferQuery } from '@/contexts/BufferContext'
-import { callGroqJSON, buildGroqError } from '@/lib/groq'
+import { callModelJSON, buildModelError } from '@/lib/model'
 import { buildAiContext } from '@/lib/aiContext'
 import { cn } from '@/lib/utils'
 
@@ -359,7 +359,7 @@ export default function PublishingHistoryPage() {
 
         const ctx = buildAiContext({ company: activeCompany, products, segments, keyMessages })
 
-        const result = await callGroqJSON<{ bullets_fr: string[]; bullets_en: string[]; recommendation_fr: string; recommendation_en: string }>(activeCompany?.id ?? '', [
+        const result = await callModelJSON<{ bullets_fr: string[]; bullets_en: string[]; recommendation_fr: string; recommendation_en: string }>(activeCompany?.id ?? '', [
           {
             role: 'system',
             content: `You are a social media analyst. Analyze these recent published posts and identify patterns. Return JSON exactly matching: {"bullets_fr":["string","string","string"],"bullets_en":["string","string","string"],"recommendation_fr":"string","recommendation_en":"string"}. Each bullets array must have exactly 3 short observations (max 12 words each) about: topics covered, channels used, and content style/format patterns - written in French for bullets_fr and English for bullets_en. The recommendation must be one concrete actionable sentence (max 20 words) in each language. Base everything only on the posts provided - do not invent data.\nBrand context:\n${ctx}`,
@@ -371,7 +371,7 @@ export default function PublishingHistoryPage() {
           setDigest(result)
         }
       } catch (e: any) {
-        const key = buildGroqError(e)
+        const key = buildModelError(e)
         if (key !== 'error.noKey') setDigestError(lang === 'fr' ? 'Analyse IA indisponible.' : 'AI analysis unavailable.')
       } finally {
         setDigestLoading(false)

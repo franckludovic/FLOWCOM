@@ -12,7 +12,7 @@ import {
 import { useI18n } from '@/contexts/I18nContext'
 import { useCompany } from '@/contexts/CompanyContext'
 import { useAuth } from '@/contexts/AuthContext'
-import { callGroqJSON, buildGroqError } from '@/lib/groq'
+import { callModelJSON, buildModelError } from '@/lib/model'
 import { buildAiContext } from '@/lib/aiContext'
 import { cn } from '@/lib/utils'
 import {
@@ -234,7 +234,7 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
 
     try {
       type APIResponse = { items: Array<{ date: string; topic: string; goal: string; format: string; channel: string }> }
-      const res = await callGroqJSON<APIResponse>(activeCompany?.id ?? '', [
+      const res = await callModelJSON<APIResponse>(activeCompany?.id ?? '', [
         { role: 'system', content: systemMsg },
         { role: 'user',   content: userMsg },
       ], { temperature: 0.8, max_tokens: 3000, requiredKeys: ['items'] })
@@ -259,7 +259,7 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
       })))
       setItems(prev => [...prev.filter(i => !i.date.startsWith(mk)), ...savedItems])
     } catch (e) {
-      setError(t(buildGroqError(e) as Parameters<typeof t>[0]))
+      setError(t(buildModelError(e) as Parameters<typeof t>[0]))
     } finally {
       setLoading(false)
     }
@@ -328,7 +328,7 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
         ].join('\n')
 
         type GapResult = { warnings_fr: string[]; warnings_en: string[] }
-        const result = await callGroqJSON<GapResult>(activeCompany?.id ?? '', [
+        const result = await callModelJSON<GapResult>(activeCompany?.id ?? '', [
           {
             role: 'system',
             content: `You are an editorial calendar auditor. Analyze this month's content plan and identify real problems. Return JSON exactly: {"warnings_fr":["string"],"warnings_en":["string"]} - each array contains 1 to 3 short warning strings (max 15 words each) in French for warnings_fr and English for warnings_en. Only flag real issues: publishing gaps > 5 days, channel imbalance vs brand preference, goals that are overrepresented or missing. If the plan is good, return {"warnings_fr":[],"warnings_en":[]}. Do not invent problems.`,

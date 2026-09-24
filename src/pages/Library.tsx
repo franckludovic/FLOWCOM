@@ -17,7 +17,7 @@ import {
   replaceDataverseLibraryItems,
   saveDataverseContentScores,
 } from '@/lib/dataverse'
-import { callGroq } from '@/lib/groq'
+import { callModel } from '@/lib/model'
 import { buildAiContext } from '@/lib/aiContext'
 
 // ─── Interfaces & Config ─────────────────────────────────────────
@@ -152,7 +152,7 @@ export default function LibraryPage() {
       for (const item of unscored) {
         try {
           const text = [item.hook, item.body].filter(Boolean).join('\n').slice(0, 400)
-          const result = await callGroq(activeCompany?.id ?? '', [
+          const result = await callModel(activeCompany?.id ?? '', [
             {
               role: 'system',
               content: `You are a social media content reviewer. Rate this ${item.channel} ${item.format} content. Reply with ONLY one word: "ready" (strong hook, clear message, good CTA), "good" (decent but could be improved), or "needs-work" (weak hook, unclear, or missing CTA). Brand context:\n${ctx}\nRespond in ${lang === 'fr' ? 'French' : 'English'} but the rating word must still be one of: ready, good, needs-work.`,

@@ -3,7 +3,7 @@ import { useI18n } from '@/contexts/I18nContext'
 import { useCompany } from '@/contexts/CompanyContext'
 import { Check, Target, Zap, Bot, RefreshCw, AlertCircle, Calendar, Flag, BookOpen, Loader2, Cpu } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { callGroq, buildGroqError } from '@/lib/groq'
+import { callModel, buildModelError } from '@/lib/model'
 import { buildAiContext } from '@/lib/aiContext'
 import {
   listDataverseLibraryItems,
@@ -173,13 +173,13 @@ export default function RoadmapPage() {
       : `You are FlowCom's AI Strategic Coach. The user has completed ${completed.length} of ${MILESTONES.length} milestones. The next milestone is: "${nextStepText}". Give 2 very short, highly practical, and encouraging tips to achieve this milestone. Do not list other milestones. Use Markdown format. Keep it direct and professional.`
 
     try {
-      const res = await callGroq(activeCompany?.id ?? '', [
+      const res = await callModel(activeCompany?.id ?? '', [
         { role: 'system', content: prompt },
         { role: 'user', content: context }
       ], { temperature: 0.6 })
       setAdvice(res)
     } catch (e) {
-      setError(t(buildGroqError(e) as any))
+      setError(t(buildModelError(e) as any))
     } finally {
       setLoadingAdvice(false)
     }

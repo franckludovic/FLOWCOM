@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import type { Session } from '@supabase/supabase-js'
 import type { Profile } from '@/types'
 import { getOrCreateDataverseProfile, updateDataverseProfile } from '@/lib/dataverse'
+import { SaveCompanySecretService } from '@/generated/services/SaveCompanySecretService'
 
 export interface AppUser {
   id: string
@@ -133,15 +134,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateApiKey = async (key: string, companyId?: string) => {
     if (!user) return
-    if (!session) throw new Error('AI integrations must be connected through the Power Platform backend.')
-    if (companyId) {
-      const { data, error } = await supabase.functions.invoke<{ connected?: boolean; error?: string }>('save-groq-integration', {
-        body: { companyId, accessToken: key },
+
+    if (!import.meta.env.DEV) {
+      if (!companyId) {
+        throw new Error('Select a company and use an owner or admin account before saving the company AI key.')
+      }
+
+      const result = await SaveCompanySecretService.Run({
+        text: companyId,
+        text_1: 'Groq',
+        text_2: key,
       })
-      if (error || !data?.connected) throw new Error(data?.error ?? error?.message ?? 'Unable to save company AI key')
+      if (!result.success) {
+        const message = result.error instanceof Error
+          ? result.error.message
+          : result.error
+            ? String(result.error)
+            : 'Unable to save company AI key'
+        throw new Error(message)
+      }
+    } else {
+      if (!session) throw new Error('AI integrations must be connected through the Power Platform backend.')
+      if (companyId) {
+        const { data, error } = await supabase.functions.invoke<{ connected?: boolean; error?: string }>('save-groq-integration', {
+          body: { companyId, accessToken: key },
+        })
+        if (error || !data?.connected) throw new Error(data?.error ?? error?.message ?? 'Unable to save company AI key')
+      }
     }
+
     setApiKeyConfigured(Boolean(key))
-    setProfile(prev => prev ? { ...prev, api_key: key } : prev)
+    // In Power Apps, do not copy the secret into React/profile state.
+    // Local development keeps the existing profile behavior for the local-only UI.
+    if (import.meta.env.DEV) setProfile(prev => prev ? { ...prev, api_key: key } : prev)
   }
 
   const updateProfile = async (updates: Partial<Profile>) => {

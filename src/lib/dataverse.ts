@@ -33,6 +33,25 @@ type AuthUser = {
   user_metadata?: { name?: string; full_name?: string }
 }
 
+function describeDataverseError(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>
+    const nestedError = record.error
+    if (nestedError && typeof nestedError === 'object' && typeof (nestedError as Record<string, unknown>).message === 'string') {
+      return String((nestedError as Record<string, unknown>).message)
+    }
+    if (typeof record.message === 'string') return record.message
+    try {
+      return JSON.stringify(error)
+    } catch {
+      return 'Unknown Dataverse error'
+    }
+  }
+  return String(error)
+}
+
 export interface DataverseCalendarItem {
   id: string
   date: string
@@ -45,8 +64,7 @@ export interface DataverseCalendarItem {
 
 function unwrap<T>(result: OperationResult<T>, operation: string): T {
   if (!result.success) {
-    if (result.error instanceof Error) throw result.error
-    throw new Error(result.error ? String(result.error) : `Dataverse operation failed: ${operation}`)
+    throw new Error(result.error ? describeDataverseError(result.error) : `Dataverse operation failed: ${operation}`)
   }
   return result.data
 }

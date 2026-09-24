@@ -6,7 +6,7 @@ import { useCompany } from '@/contexts/CompanyContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBuffer, bufferQuery } from '@/contexts/BufferContext'
-import { callGroq, buildGroqError } from '@/lib/groq'
+import { callModel, buildModelError } from '@/lib/model'
 import { buildAiContext } from '@/lib/aiContext'
 import { listDataverseLibraryItems, updateDataverseLibraryItem } from '@/lib/dataverse'
 import {
@@ -570,14 +570,14 @@ export default function StudioPage() {
     setToningId(tone.id); setToneError('')
     try {
       const ctx = buildAiContext({ company: activeCompany, products, segments, keyMessages })
-      const result = await callGroq(activeCompany?.id ?? '', [
+      const result = await callModel(activeCompany?.id ?? '', [
         { role: 'system', content: `You are a social media copywriter. ${tone.prompt}\n\nBrand context:\n${ctx}\n\nReturn ONLY the rewritten post. No explanation, no quotes. Respond in ${lang === 'fr' ? 'French' : 'English'}.` },
         { role: 'user', content: text },
       ], { temperature: 0.75, max_tokens: 1024 })
       const cleaned = result.trim().replace(/^["']|["']$/g, '')
       if (cleaned) { setBeforeTone(content); setContent(cleaned) }
     } catch (e: any) {
-      const k = buildGroqError(e)
+      const k = buildModelError(e)
       setToneError(k === 'error.noKey' ? (lang === 'fr' ? 'Clé Groq manquante.' : 'Missing Groq key.')
         : k === 'error.429' ? (lang === 'fr' ? 'Limite atteinte.' : 'Rate limit hit.')
         : (lang === 'fr' ? 'Erreur IA.' : 'AI error.'))
@@ -601,7 +601,7 @@ export default function StudioPage() {
       const charLimit = presetCfg.charLimit
       const ctx = buildAiContext({ company: activeCompany, products, segments, keyMessages })
 
-      const result = await callGroq(activeCompany?.id ?? '', [
+      const result = await callModel(activeCompany?.id ?? '', [
         {
           role: 'system',
           content: `You are a social media publishing assistant doing a quick pre-flight check. Analyze this post and return ONLY a JSON object: {"issues_fr":["string"],"issues_en":["string"]} with 0–2 issues each (max 15 words per issue). issues_fr in French, issues_en in English. Flag ONLY real problems: missing CTA when the goal is conversion, text significantly over the ${charLimit}-char limit for ${preset}, tone clearly mismatched with the brand. If the post is fine, return {"issues_fr":[],"issues_en":[]}. Do not invent issues. Brand context:\n${ctx}`,

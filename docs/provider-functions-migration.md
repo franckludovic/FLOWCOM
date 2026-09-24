@@ -22,10 +22,13 @@ The `functions/` folder contains the first Azure Functions implementation:
 - `POST /api/integrations/buffer` validates a Buffer token and stores its first organization.
 - `POST /api/providers/groq` proxies Groq chat requests.
 - `POST /api/providers/buffer` proxies Buffer GraphQL requests.
+- `POST /api/providers/image` generates an image using the Hugging Face secret.
+- `POST /api/members/invite` invites an Entra user and creates their Dataverse membership.
 
-Every route reads the Entra object ID supplied by App Service Authentication and
-checks the caller's `fc_companymembership` row before reading or writing a company
-integration. The functions use managed identity for both Dataverse and Key Vault.
+Every route reads the Entra object ID supplied by App Service Authentication. The
+company-scoped routes check the caller's `fc_companymembership` row before reading
+or writing company data. The functions use managed identity for Dataverse, Key
+Vault, and Microsoft Graph.
 
 ## Azure setup required before deployment
 
@@ -43,8 +46,13 @@ Grant the Function App's managed identity:
 1. Key Vault Secrets User on the vault.
 2. A Dataverse application user/service principal with permission to read profiles
    and memberships, and read/write `fc_companyintegration`.
+3. Microsoft Graph application permission `User.Invite.All`, with admin consent,
+   if member invitations are enabled.
 
-Then create a Power Platform custom connector for the four function routes. The
+Store the Hugging Face token as the Key Vault secret `flowcom-huggingface` and add
+`INVITATION_REDIRECT_URL` as a Function App setting.
+
+Then create a Power Platform custom connector using `functions/openapi.yaml`. The
 Code App should call that connector through its generated Power Apps data-source
 service. Do not add a direct browser `fetch` to the Function App URL: hosted Code
 Apps can block arbitrary network destinations through their content-security policy.
@@ -65,7 +73,7 @@ Never commit that file or any provider token.
 ## Cutover order
 
 1. Deploy the Function App and configure identity/permissions.
-2. Test the four routes with an authenticated Entra token and two test companies.
+2. Test the six routes with an authenticated Entra token and two test companies.
 3. Create the custom connector and add it to the Code App.
 4. Replace the remaining Supabase provider calls in `src/lib/groq.ts`,
    `src/contexts/BufferContext.tsx`, and the Header integration handlers with the

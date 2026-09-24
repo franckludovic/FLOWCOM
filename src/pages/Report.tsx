@@ -4,7 +4,7 @@ import { useCompany } from '@/contexts/CompanyContext'
 import { useBuffer, bufferQuery } from '@/contexts/BufferContext'
 import { Plus, Trash2, Save, BarChart2, Brain, Check, Loader2, History, AlertCircle, Sparkles, RefreshCw, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { callGroqJSON, buildGroqError } from '@/lib/groq'
+import { callModelJSON, buildModelError } from '@/lib/model'
 import { buildAiContext } from '@/lib/aiContext'
 
 interface AnalyzedPost {
@@ -176,7 +176,7 @@ ${validPosts.map(p => `- ${p.title} (${p.channel}): Reach=${p.reach}, 3sViews=${
       : `Act as an expert Social Media analyst. Analyze these weekly metrics and provide a strict JSON report structured with: "whatWorked" (array of bullet points), "whatToStop" (array of bullet points), "adjustments" (array of tweaks for next week), and "insights" (deep audience learnings to memorize). Be concrete and highly specific.`
 
     try {
-      const res = await callGroqJSON<ReportAnalysis>(activeCompany?.id ?? '', [
+      const res = await callModelJSON<ReportAnalysis>(activeCompany?.id ?? '', [
         { role: 'system', content: prompt },
         { role: 'user', content: context }
       ], { temperature: 0.4, requiredKeys: ['whatWorked', 'whatToStop', 'adjustments', 'insights'] })
@@ -184,7 +184,7 @@ ${validPosts.map(p => `- ${p.title} (${p.channel}): Reach=${p.reach}, 3sViews=${
       setAnalysis(res)
       setSavedToMemory(false)
     } catch (e: any) {
-      setError(t(buildGroqError(e) as any))
+      setError(t(buildModelError(e) as any))
     } finally {
       setAnalyzing(false)
     }

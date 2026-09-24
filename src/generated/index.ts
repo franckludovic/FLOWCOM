@@ -17,6 +17,8 @@ export * as Fc_libraryitemsModel from './models/Fc_libraryitemsModel';
 export * as Fc_productsModel from './models/Fc_productsModel';
 export * as Fc_roadmapmilestonesModel from './models/Fc_roadmapmilestonesModel';
 export * as Fc_weeklyreportsModel from './models/Fc_weeklyreportsModel';
+export * as ModelCallModel from './models/ModelCallModel';
+export * as SaveCompanySecretModel from './models/SaveCompanySecretModel';
 
 // Services
 export * from './services/Fc_audiencesegmentsService';
@@ -31,3 +33,5 @@ export * from './services/Fc_libraryitemsService';
 export * from './services/Fc_productsService';
 export * from './services/Fc_roadmapmilestonesService';
 export * from './services/Fc_weeklyreportsService';
+export * from './services/ModelCallService';
+export * from './services/SaveCompanySecretService';

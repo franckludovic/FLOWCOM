@@ -4,7 +4,7 @@ import { useCompany } from '@/contexts/CompanyContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { Zap, ArrowRight, Brain, CalendarDays, FileText, BookOpen, Sparkles, RefreshCw } from 'lucide-react'
-import { callGroqJSON, buildGroqError } from '@/lib/groq'
+import { callModelJSON, buildModelError } from '@/lib/model'
 import { buildAiContext } from '@/lib/aiContext'
 import { getDataverseWorkspaceCounts } from '@/lib/dataverse'
 
@@ -81,7 +81,7 @@ export default function WorkspacePage() {
         `Draft posts sitting untouched for more than 7 days: ${staleDrafts}`,
         `Weekly performance report filed this week: ${hasReportThisWeek ? 'yes' : 'no'}`,
       ].join('\n')
-      const result = await callGroqJSON<{ activities: WorkspaceActivity[] }>(activeCompany?.id ?? '', [
+      const result = await callModelJSON<{ activities: WorkspaceActivity[] }>(activeCompany?.id ?? '', [
         {
           role: 'system',
           content: `You are FlowCom's proactive communication strategist. Turn the live workspace signals into three useful, non-duplicated next actions. Prioritize missing foundations before optimization. Return only JSON matching this exact schema - every string field must be provided in BOTH French and English: {"activities":[{"title_fr":"string","title_en":"string","reason_fr":"one sentence in French","reason_en":"one sentence in English","action_fr":"short button label in French","action_en":"short button label in English","route":"/content or /calendar or /roadmap or /memory or /onboarding or /studio or /library or /publishing-history or /report","step":"number required only when route is /onboarding: 1 for company info, 2 for brand identity, 3 for products, 4 for audience, 5 for communication","priority":"high or medium or low"}]}. For onboarding actions, always include the exact step. Use the publishing and draft signals to suggest concrete actions. Do not invent facts.\nCompany context:\n${buildAiContext({ company: activeCompany, products, segments, keyMessages })}\nLive signals:\n${signals}`
@@ -101,7 +101,7 @@ export default function WorkspacePage() {
       setActivities(safeActivities)
       localStorage.setItem(cacheKey, JSON.stringify({ createdAt: Date.now(), activities: safeActivities }))
     } catch (error) {
-      setBriefError(buildGroqError(error))
+      setBriefError(buildModelError(error))
     } finally {
       setBriefLoading(false)
     }
