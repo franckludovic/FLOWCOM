@@ -1,13 +1,13 @@
 {
-  "name": "fc_company",
-  "title": "Companies",
+  "name": "fc_contact",
+  "title": "Contacts",
   "schema": {
     "type": "array",
     "items": {
       "type": "object",
       "x-ms-dataverse-entity": true,
-      "x-ms-dataverse-entityset": "fc_companies",
-      "x-ms-dataverse-primary-id": "fc_companyid",
+      "x-ms-dataverse-entityset": "fc_contacts",
+      "x-ms-dataverse-primary-id": "fc_contactid",
       "x-ms-dataverse-primary-name": "fc_name",
       "properties": {
         "createdby": {
@@ -82,101 +82,187 @@
           "required": true,
           "maxLength": 100
         },
-        "fc_alues": {
+        "fc_city": {
           "type": "string",
-          "title": "fcValues",
-          "x-ms-dataverse-attribute": "fc_alues",
+          "title": "City",
+          "x-ms-dataverse-attribute": "fc_city",
           "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_alues",
-          "maxLength": 4000
+          "x-ms-schema-name": "fc_City",
+          "maxLength": 100
         },
-        "fc_argets": {
-          "type": "string",
-          "title": "fcTargets",
-          "x-ms-dataverse-attribute": "fc_argets",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_argets",
-          "maxLength": 4000
-        },
-        "fc_companyid": {
+        "fc_company": {
           "type": "string",
           "title": "Company",
-          "x-ms-dataverse-attribute": "fc_companyid",
+          "x-ms-dataverse-attribute": "fc_company",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "fc_Company",
+          "x-ms-dataverse-navigation-properties": [
+            "fc_Company"
+          ],
+          "required": true
+        },
+        "fc_companyname": {
+          "type": "string",
+          "title": "fc_companyname",
+          "x-ms-dataverse-attribute": "fc_companyname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "fc_CompanyName",
+          "x-ms-dataverse-attribute-of": "fc_company",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "fc_contactid": {
+          "type": "string",
+          "title": "Contact",
+          "x-ms-dataverse-attribute": "fc_contactid",
           "x-ms-dataverse-type": "UniqueidentifierType",
-          "x-ms-schema-name": "fc_CompanyId",
+          "x-ms-schema-name": "fc_ContactId",
           "x-ms-dataverse-primary-id": true,
           "required": true,
           "x-ms-keyType": "primary"
         },
-        "fc_createdon": {
+        "fc_country": {
           "type": "string",
-          "title": "Created On",
-          "x-ms-dataverse-attribute": "fc_createdon",
+          "title": "Country",
+          "x-ms-dataverse-attribute": "fc_country",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "fc_Country",
+          "maxLength": 100
+        },
+        "fc_email": {
+          "type": "string",
+          "title": "Email",
+          "x-ms-dataverse-attribute": "fc_email",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "fc_Email",
+          "maxLength": 320
+        },
+        "fc_firstsource": {
+          "type": "string",
+          "title": "First source",
+          "x-ms-dataverse-attribute": "fc_firstsource",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "fc_Firstsource",
+          "enum": [
+            "manual",
+            "flowcom",
+            "buffer",
+            "odoo",
+            "whatsapp",
+            "meta_ads",
+            "google_ads",
+            "linkedin_ads"
+          ],
+          "x-ms-enum-values": [
+            122370000,
+            122370001,
+            122370002,
+            122370003,
+            122370004,
+            122370005,
+            122370006,
+            122370007
+          ],
+          "Color": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "5208cfa5-e7b8-f111-aaae-70a8a5114222",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "Source",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "fc_firstsourcename": {
+          "type": "string",
+          "title": "fc_firstsourcename",
+          "x-ms-dataverse-attribute": "fc_firstsourcename",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "fc_firstsourceName",
+          "x-ms-dataverse-attribute-of": "fc_firstsource",
+          "x-ms-read-only": true
+        },
+        "fc_kind": {
+          "type": "string",
+          "title": "Kind",
+          "x-ms-dataverse-attribute": "fc_kind",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "fc_Kind",
+          "enum": [
+            "person",
+            "organization"
+          ],
+          "x-ms-enum-values": [
+            122370000,
+            122370001
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "5bfb2a1c-e8b8-f111-aaae-70a8a5114222",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Kind",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "fc_kindname": {
+          "type": "string",
+          "title": "fc_kindname",
+          "x-ms-dataverse-attribute": "fc_kindname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "fc_kindName",
+          "x-ms-dataverse-attribute-of": "fc_kind",
+          "x-ms-read-only": true
+        },
+        "fc_lastactivityon": {
+          "type": "string",
+          "title": "Last activity on",
+          "x-ms-dataverse-attribute": "fc_lastactivityon",
           "x-ms-dataverse-type": "DateTimeType",
-          "x-ms-schema-name": "fc_CreatedOn"
+          "x-ms-schema-name": "fc_Lastactivityon"
         },
-        "fc_currency": {
+        "fc_lifecyclestage": {
           "type": "string",
-          "title": "Currency",
-          "x-ms-dataverse-attribute": "fc_currency",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_Currency",
-          "maxLength": 3
+          "title": "Lifecycle stage",
+          "x-ms-dataverse-attribute": "fc_lifecyclestage",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "fc_Lifecyclestage",
+          "enum": [
+            "lead",
+            "prospect",
+            "customer",
+            "inactive"
+          ],
+          "x-ms-enum-values": [
+            122370000,
+            122370001,
+            122370002,
+            122370003
+          ],
+          "Color": [
+            null,
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "899d132c-e8b8-f111-aaae-70a8a5114222",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Lifecycle stage",
+          "x-ms-optionSetType": "Picklist"
         },
-        "fc_eamsize": {
+        "fc_lifecyclestagename": {
           "type": "string",
-          "title": "fcTeam size",
-          "x-ms-dataverse-attribute": "fc_eamsize",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_eamsize",
-          "maxLength": 4000
-        },
-        "fc_ebsite": {
-          "type": "string",
-          "title": "fcWebsite",
-          "x-ms-dataverse-attribute": "fc_ebsite",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_ebsite",
-          "maxLength": 4000
-        },
-        "fc_hannels": {
-          "type": "string",
-          "title": "fcChannels",
-          "x-ms-dataverse-attribute": "fc_hannels",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_hannels",
-          "maxLength": 4000
-        },
-        "fc_hortdescription": {
-          "type": "string",
-          "title": "fcShort description",
-          "x-ms-dataverse-attribute": "fc_hortdescription",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_hortdescription",
-          "maxLength": 4000
-        },
-        "fc_ision": {
-          "type": "string",
-          "title": "fcVision",
-          "x-ms-dataverse-attribute": "fc_ision",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_ision",
-          "maxLength": 4000
-        },
-        "fc_ission": {
-          "type": "string",
-          "title": "fcMission",
-          "x-ms-dataverse-attribute": "fc_ission",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_ission",
-          "maxLength": 4000
-        },
-        "fc_modifiedon": {
-          "type": "string",
-          "title": "Modified On",
-          "x-ms-dataverse-attribute": "fc_modifiedon",
-          "x-ms-dataverse-type": "DateTimeType",
-          "x-ms-schema-name": "fc_ModifiedOn"
+          "title": "fc_lifecyclestagename",
+          "x-ms-dataverse-attribute": "fc_lifecyclestagename",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "fc_lifecyclestageName",
+          "x-ms-dataverse-attribute-of": "fc_lifecyclestage",
+          "x-ms-read-only": true
         },
         "fc_name": {
           "type": "string",
@@ -185,47 +271,102 @@
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "fc_Name",
           "x-ms-dataverse-primary-name": true,
+          "maxLength": 200
+        },
+        "fc_organization": {
+          "type": "string",
+          "title": "Organization",
+          "x-ms-dataverse-attribute": "fc_organization",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "fc_Organization",
+          "x-ms-dataverse-navigation-properties": [
+            "fc_Organization"
+          ]
+        },
+        "fc_organizationname": {
+          "type": "string",
+          "title": "fc_organizationname",
+          "x-ms-dataverse-attribute": "fc_organizationname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "fc_OrganizationName",
+          "x-ms-dataverse-attribute-of": "fc_organization",
+          "x-ms-read-only": true,
+          "maxLength": 200
+        },
+        "fc_phone": {
+          "type": "string",
+          "title": "Phone (E.164)",
+          "x-ms-dataverse-attribute": "fc_phone",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "fc_Phone",
+          "maxLength": 30
+        },
+        "fc_segment": {
+          "type": "string",
+          "title": "Audience segment",
+          "x-ms-dataverse-attribute": "fc_segment",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "fc_Segment",
+          "x-ms-dataverse-navigation-properties": [
+            "fc_Segment"
+          ]
+        },
+        "fc_segmentname": {
+          "type": "string",
+          "title": "fc_segmentname",
+          "x-ms-dataverse-attribute": "fc_segmentname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "fc_SegmentName",
+          "x-ms-dataverse-attribute-of": "fc_segment",
+          "x-ms-read-only": true,
           "maxLength": 850
         },
-        "fc_ndustry": {
+        "fc_summary": {
           "type": "string",
-          "title": "fcIndustry",
-          "x-ms-dataverse-attribute": "fc_ndustry",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_ndustry",
-          "maxLength": 4000
+          "title": "Summary",
+          "x-ms-dataverse-attribute": "fc_summary",
+          "x-ms-dataverse-type": "MemoType",
+          "x-ms-schema-name": "fc_Summary",
+          "maxLength": 2000
         },
-        "fc_ocation": {
+        "fc_whatsappconsent": {
           "type": "string",
-          "title": "fcLocation",
-          "x-ms-dataverse-attribute": "fc_ocation",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_ocation",
-          "maxLength": 4000
+          "title": "WhatsApp consent",
+          "x-ms-dataverse-attribute": "fc_whatsappconsent",
+          "x-ms-dataverse-type": "BooleanType",
+          "x-ms-schema-name": "fc_Whatsappconsent",
+          "enum": [
+            "No",
+            "Yes"
+          ],
+          "x-ms-enum-values": [
+            0,
+            1
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "909d132c-e8b8-f111-aaae-70a8a5114222",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "WhatsApp consent",
+          "x-ms-optionSetType": "Boolean"
         },
-        "fc_one": {
+        "fc_whatsappconsentname": {
           "type": "string",
-          "title": "fcTone",
-          "x-ms-dataverse-attribute": "fc_one",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_one",
-          "maxLength": 4000
+          "title": "fc_whatsappconsentname",
+          "x-ms-dataverse-attribute": "fc_whatsappconsentname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "fc_whatsappconsentName",
+          "x-ms-dataverse-attribute-of": "fc_whatsappconsent",
+          "x-ms-read-only": true
         },
-        "fc_oundedyear": {
+        "fc_whatsappconsenton": {
           "type": "string",
-          "title": "fcFounded year",
-          "x-ms-dataverse-attribute": "fc_oundedyear",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_oundedyear",
-          "maxLength": 4000
-        },
-        "fc_ublishingfrequency": {
-          "type": "string",
-          "title": "fcPublishing frequency",
-          "x-ms-dataverse-attribute": "fc_ublishingfrequency",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_ublishingfrequency",
-          "maxLength": 4000
+          "title": "WhatsApp consent on",
+          "x-ms-dataverse-attribute": "fc_whatsappconsenton",
+          "x-ms-dataverse-type": "DateTimeType",
+          "x-ms-schema-name": "fc_Whatsappconsenton"
         },
         "importsequencenumber": {
           "type": "string",
@@ -415,7 +556,7 @@
             null,
             null
           ],
-          "x-ms-optionsetmetadataid": "27768971-46b6-4415-8803-8a195eed01d8",
+          "x-ms-optionsetmetadataid": "0dede1ab-e7b8-f111-aaae-70a8a5114222",
           "x-ms-isGlobal": false,
           "x-ms-optionsetdisplayname": "Status",
           "x-ms-optionSetType": "State"
@@ -447,7 +588,7 @@
             null,
             null
           ],
-          "x-ms-optionsetmetadataid": "d9cb6a40-8316-48d3-a51f-630e57c211d1",
+          "x-ms-optionsetmetadataid": "17ede1ab-e7b8-f111-aaae-70a8a5114222",
           "x-ms-isGlobal": false,
           "x-ms-optionsetdisplayname": "Status Reason",
           "x-ms-optionSetType": "Status"
@@ -487,7 +628,8 @@
       "required": [
         "createdbyyominame",
         "createdonbehalfbyyominame",
-        "fc_companyid",
+        "fc_company",
+        "fc_contactid",
         "modifiedbyyominame",
         "modifiedonbehalfbyyominame",
         "ownerid",

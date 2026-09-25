@@ -28,6 +28,7 @@ export type Fc_calendaritemsstatuscode = keyof typeof Fc_calendaritemsstatuscode
 
 export interface Fc_calendaritemsBase {
   fc_calendaritemid: string;
+  "fc_Campaign@odata.bind"?: string;
   fc_channel?: string;
   "fc_Company@odata.bind": string;
   fc_format?: Fc_calendaritemsfc_format;
@@ -58,6 +59,8 @@ export interface Fc_calendaritems extends Fc_calendaritemsBase {
   _createdby_value?: string;
   createdonbehalfby?: object;
   _createdonbehalfby_value?: string;
+  fc_campaign?: object;
+  _fc_campaign_value?: string;
   fc_company?: object;
   _fc_company_value?: string;
   modifiedby?: object;

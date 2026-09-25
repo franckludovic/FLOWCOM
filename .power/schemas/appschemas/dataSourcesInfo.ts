@@ -45,6 +45,27 @@ export const dataSourcesInfo = {
       }
     }
   },
+  "fc_activities": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "fc_activityid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "fc_aiactions": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "fc_aiactionid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "fc_aiinsights": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "fc_aiinsightid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "fc_audiencesegments": {
     "tableId": "",
     "version": "",
@@ -56,6 +77,20 @@ export const dataSourcesInfo = {
     "tableId": "",
     "version": "",
     "primaryKey": "fc_calendaritemid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "fc_campaignmetrics": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "fc_campaignmetricid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "fc_campaigns": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "fc_campaignid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -77,6 +112,20 @@ export const dataSourcesInfo = {
     "tableId": "",
     "version": "",
     "primaryKey": "fc_companymembershipid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "fc_contactidentities": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "fc_contactidentityid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "fc_contacts": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "fc_contactid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },

@@ -6,11 +6,18 @@
 // Models
 export * as BufferCallModel from './models/BufferCallModel';
 export * as CommonModels from './models/CommonModels';
+export * as Fc_activitiesModel from './models/Fc_activitiesModel';
+export * as Fc_aiactionsModel from './models/Fc_aiactionsModel';
+export * as Fc_aiinsightsModel from './models/Fc_aiinsightsModel';
 export * as Fc_audiencesegmentsModel from './models/Fc_audiencesegmentsModel';
 export * as Fc_calendaritemsModel from './models/Fc_calendaritemsModel';
+export * as Fc_campaignmetricsModel from './models/Fc_campaignmetricsModel';
+export * as Fc_campaignsModel from './models/Fc_campaignsModel';
 export * as Fc_companiesModel from './models/Fc_companiesModel';
 export * as Fc_companyintegrationsModel from './models/Fc_companyintegrationsModel';
 export * as Fc_companymembershipsModel from './models/Fc_companymembershipsModel';
+export * as Fc_contactidentitiesModel from './models/Fc_contactidentitiesModel';
+export * as Fc_contactsModel from './models/Fc_contactsModel';
 export * as Fc_contentscoresModel from './models/Fc_contentscoresModel';
 export * as Fc_flowcomprofilesModel from './models/Fc_flowcomprofilesModel';
 export * as Fc_keymessagesModel from './models/Fc_keymessagesModel';
@@ -23,11 +30,18 @@ export * as SaveCompanySecretModel from './models/SaveCompanySecretModel';
 
 // Services
 export * from './services/BufferCallService';
+export * from './services/Fc_activitiesService';
+export * from './services/Fc_aiactionsService';
+export * from './services/Fc_aiinsightsService';
 export * from './services/Fc_audiencesegmentsService';
 export * from './services/Fc_calendaritemsService';
+export * from './services/Fc_campaignmetricsService';
+export * from './services/Fc_campaignsService';
 export * from './services/Fc_companiesService';
 export * from './services/Fc_companyintegrationsService';
 export * from './services/Fc_companymembershipsService';
+export * from './services/Fc_contactidentitiesService';
+export * from './services/Fc_contactsService';
 export * from './services/Fc_contentscoresService';
 export * from './services/Fc_flowcomprofilesService';
 export * from './services/Fc_keymessagesService';

@@ -20,7 +20,7 @@ export interface IGetAllOptions {
    * When true, requests the server-side total count of records matching the query,
    * returned as `count` on the result. The total is independent of `top`/`skip`/paging
    * (it reflects the full result set, not the number of rows loaded).
-   * Note: Dataverse caps this value at 5000 - larger result sets report 5000.
+   * Note: Dataverse caps this value at 5000 — larger result sets report 5000.
    */
   count?: boolean;
   skipToken?: string;

@@ -18,6 +18,7 @@ export interface Fc_companiesBase {
   fc_argets?: string;
   fc_companyid: string;
   fc_createdon?: string;
+  fc_currency?: string;
   fc_eamsize?: string;
   fc_ebsite?: string;
   fc_hannels?: string;

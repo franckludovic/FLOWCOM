@@ -29,6 +29,7 @@ export type Fc_libraryitemsstatuscode = keyof typeof Fc_libraryitemsstatuscode;
 export interface Fc_libraryitemsBase {
   fc_body?: string;
   fc_calltoaction?: string;
+  "fc_Campaign@odata.bind"?: string;
   fc_channel?: string;
   "fc_Company@odata.bind": string;
   fc_conclusion?: string;
@@ -66,6 +67,8 @@ export interface Fc_libraryitems extends Fc_libraryitemsBase {
   _createdby_value?: string;
   createdonbehalfby?: object;
   _createdonbehalfby_value?: string;
+  fc_campaign?: object;
+  _fc_campaign_value?: string;
   fc_company?: object;
   _fc_company_value?: string;
   modifiedby?: object;

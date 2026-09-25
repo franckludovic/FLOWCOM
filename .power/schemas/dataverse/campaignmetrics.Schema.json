@@ -1,13 +1,13 @@
 {
-  "name": "fc_company",
-  "title": "Companies",
+  "name": "fc_campaignmetric",
+  "title": "Campaign Metrics",
   "schema": {
     "type": "array",
     "items": {
       "type": "object",
       "x-ms-dataverse-entity": true,
-      "x-ms-dataverse-entityset": "fc_companies",
-      "x-ms-dataverse-primary-id": "fc_companyid",
+      "x-ms-dataverse-entityset": "fc_campaignmetrics",
+      "x-ms-dataverse-primary-id": "fc_campaignmetricid",
       "x-ms-dataverse-primary-name": "fc_name",
       "properties": {
         "createdby": {
@@ -82,101 +82,148 @@
           "required": true,
           "maxLength": 100
         },
-        "fc_alues": {
+        "fc_campaign": {
           "type": "string",
-          "title": "fcValues",
-          "x-ms-dataverse-attribute": "fc_alues",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_alues",
-          "maxLength": 4000
+          "title": "Campaign",
+          "x-ms-dataverse-attribute": "fc_campaign",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "fc_Campaign",
+          "x-ms-dataverse-navigation-properties": [
+            "fc_Campaign"
+          ],
+          "required": true
         },
-        "fc_argets": {
+        "fc_campaignmetricid": {
           "type": "string",
-          "title": "fcTargets",
-          "x-ms-dataverse-attribute": "fc_argets",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_argets",
-          "maxLength": 4000
-        },
-        "fc_companyid": {
-          "type": "string",
-          "title": "Company",
-          "x-ms-dataverse-attribute": "fc_companyid",
+          "title": "Campaign Metric",
+          "x-ms-dataverse-attribute": "fc_campaignmetricid",
           "x-ms-dataverse-type": "UniqueidentifierType",
-          "x-ms-schema-name": "fc_CompanyId",
+          "x-ms-schema-name": "fc_CampaignmetricId",
           "x-ms-dataverse-primary-id": true,
           "required": true,
           "x-ms-keyType": "primary"
         },
-        "fc_createdon": {
+        "fc_campaignname": {
           "type": "string",
-          "title": "Created On",
-          "x-ms-dataverse-attribute": "fc_createdon",
+          "title": "fc_campaignname",
+          "x-ms-dataverse-attribute": "fc_campaignname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "fc_CampaignName",
+          "x-ms-dataverse-attribute-of": "fc_campaign",
+          "x-ms-read-only": true,
+          "maxLength": 200
+        },
+        "fc_channel": {
+          "type": "string",
+          "title": "Channel",
+          "x-ms-dataverse-attribute": "fc_channel",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "fc_Channel",
+          "required": true,
+          "enum": [
+            "facebook",
+            "instagram",
+            "linkedin",
+            "tiktok",
+            "x",
+            "whatsapp",
+            "google"
+          ],
+          "x-ms-enum-values": [
+            122370000,
+            122370001,
+            122370002,
+            122370003,
+            122370004,
+            122370005,
+            122370006
+          ],
+          "Color": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "f56fda66-e8b8-f111-aaae-70a8a5114222",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Channel",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "fc_channelname": {
+          "type": "string",
+          "title": "fc_channelname",
+          "x-ms-dataverse-attribute": "fc_channelname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "fc_channelName",
+          "x-ms-dataverse-attribute-of": "fc_channel",
+          "x-ms-read-only": true
+        },
+        "fc_clicks": {
+          "type": "string",
+          "title": "Clicks",
+          "x-ms-dataverse-attribute": "fc_clicks",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "fc_Clicks"
+        },
+        "fc_company": {
+          "type": "string",
+          "title": "Company",
+          "x-ms-dataverse-attribute": "fc_company",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "fc_Company",
+          "x-ms-dataverse-navigation-properties": [
+            "fc_Company"
+          ],
+          "required": true
+        },
+        "fc_companyname": {
+          "type": "string",
+          "title": "fc_companyname",
+          "x-ms-dataverse-attribute": "fc_companyname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "fc_CompanyName",
+          "x-ms-dataverse-attribute-of": "fc_company",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "fc_conversions": {
+          "type": "string",
+          "title": "Conversions",
+          "x-ms-dataverse-attribute": "fc_conversions",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "fc_Conversions"
+        },
+        "fc_date": {
+          "type": "string",
+          "title": "Date",
+          "x-ms-dataverse-attribute": "fc_date",
           "x-ms-dataverse-type": "DateTimeType",
-          "x-ms-schema-name": "fc_CreatedOn"
+          "x-ms-schema-name": "fc_Date",
+          "required": true
         },
-        "fc_currency": {
+        "fc_engagements": {
           "type": "string",
-          "title": "Currency",
-          "x-ms-dataverse-attribute": "fc_currency",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_Currency",
-          "maxLength": 3
+          "title": "Engagements",
+          "x-ms-dataverse-attribute": "fc_engagements",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "fc_Engagements"
         },
-        "fc_eamsize": {
+        "fc_impressions": {
           "type": "string",
-          "title": "fcTeam size",
-          "x-ms-dataverse-attribute": "fc_eamsize",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_eamsize",
-          "maxLength": 4000
+          "title": "Impressions",
+          "x-ms-dataverse-attribute": "fc_impressions",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "fc_Impressions"
         },
-        "fc_ebsite": {
+        "fc_leads": {
           "type": "string",
-          "title": "fcWebsite",
-          "x-ms-dataverse-attribute": "fc_ebsite",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_ebsite",
-          "maxLength": 4000
-        },
-        "fc_hannels": {
-          "type": "string",
-          "title": "fcChannels",
-          "x-ms-dataverse-attribute": "fc_hannels",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_hannels",
-          "maxLength": 4000
-        },
-        "fc_hortdescription": {
-          "type": "string",
-          "title": "fcShort description",
-          "x-ms-dataverse-attribute": "fc_hortdescription",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_hortdescription",
-          "maxLength": 4000
-        },
-        "fc_ision": {
-          "type": "string",
-          "title": "fcVision",
-          "x-ms-dataverse-attribute": "fc_ision",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_ision",
-          "maxLength": 4000
-        },
-        "fc_ission": {
-          "type": "string",
-          "title": "fcMission",
-          "x-ms-dataverse-attribute": "fc_ission",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_ission",
-          "maxLength": 4000
-        },
-        "fc_modifiedon": {
-          "type": "string",
-          "title": "Modified On",
-          "x-ms-dataverse-attribute": "fc_modifiedon",
-          "x-ms-dataverse-type": "DateTimeType",
-          "x-ms-schema-name": "fc_ModifiedOn"
+          "title": "Leads",
+          "x-ms-dataverse-attribute": "fc_leads",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "fc_Leads"
         },
         "fc_name": {
           "type": "string",
@@ -185,47 +232,79 @@
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "fc_Name",
           "x-ms-dataverse-primary-name": true,
-          "maxLength": 850
+          "maxLength": 200
         },
-        "fc_ndustry": {
+        "fc_reach": {
           "type": "string",
-          "title": "fcIndustry",
-          "x-ms-dataverse-attribute": "fc_ndustry",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_ndustry",
-          "maxLength": 4000
+          "title": "Reach",
+          "x-ms-dataverse-attribute": "fc_reach",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "fc_Reach"
         },
-        "fc_ocation": {
+        "fc_revenue": {
           "type": "string",
-          "title": "fcLocation",
-          "x-ms-dataverse-attribute": "fc_ocation",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_ocation",
-          "maxLength": 4000
+          "title": "Revenue",
+          "x-ms-dataverse-attribute": "fc_revenue",
+          "x-ms-dataverse-type": "DecimalType",
+          "x-ms-schema-name": "fc_Revenue"
         },
-        "fc_one": {
+        "fc_source": {
           "type": "string",
-          "title": "fcTone",
-          "x-ms-dataverse-attribute": "fc_one",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_one",
-          "maxLength": 4000
+          "title": "Source",
+          "x-ms-dataverse-attribute": "fc_source",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "fc_Source",
+          "required": true,
+          "enum": [
+            "manual",
+            "flowcom",
+            "buffer",
+            "odoo",
+            "whatsapp",
+            "meta_ads",
+            "google_ads",
+            "linkedin_ads"
+          ],
+          "x-ms-enum-values": [
+            122370000,
+            122370001,
+            122370002,
+            122370003,
+            122370004,
+            122370005,
+            122370006,
+            122370007
+          ],
+          "Color": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "5208cfa5-e7b8-f111-aaae-70a8a5114222",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "Source",
+          "x-ms-optionSetType": "Picklist"
         },
-        "fc_oundedyear": {
+        "fc_sourcename": {
           "type": "string",
-          "title": "fcFounded year",
-          "x-ms-dataverse-attribute": "fc_oundedyear",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_oundedyear",
-          "maxLength": 4000
+          "title": "fc_sourcename",
+          "x-ms-dataverse-attribute": "fc_sourcename",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "fc_sourceName",
+          "x-ms-dataverse-attribute-of": "fc_source",
+          "x-ms-read-only": true
         },
-        "fc_ublishingfrequency": {
+        "fc_spend": {
           "type": "string",
-          "title": "fcPublishing frequency",
-          "x-ms-dataverse-attribute": "fc_ublishingfrequency",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_ublishingfrequency",
-          "maxLength": 4000
+          "title": "Spend",
+          "x-ms-dataverse-attribute": "fc_spend",
+          "x-ms-dataverse-type": "DecimalType",
+          "x-ms-schema-name": "fc_Spend"
         },
         "importsequencenumber": {
           "type": "string",
@@ -415,7 +494,7 @@
             null,
             null
           ],
-          "x-ms-optionsetmetadataid": "27768971-46b6-4415-8803-8a195eed01d8",
+          "x-ms-optionsetmetadataid": "3700d8de-e7b8-f111-aaae-70a8a5114222",
           "x-ms-isGlobal": false,
           "x-ms-optionsetdisplayname": "Status",
           "x-ms-optionSetType": "State"
@@ -447,7 +526,7 @@
             null,
             null
           ],
-          "x-ms-optionsetmetadataid": "d9cb6a40-8316-48d3-a51f-630e57c211d1",
+          "x-ms-optionsetmetadataid": "4100d8de-e7b8-f111-aaae-70a8a5114222",
           "x-ms-isGlobal": false,
           "x-ms-optionsetdisplayname": "Status Reason",
           "x-ms-optionSetType": "Status"
@@ -487,7 +566,12 @@
       "required": [
         "createdbyyominame",
         "createdonbehalfbyyominame",
-        "fc_companyid",
+        "fc_campaign",
+        "fc_campaignmetricid",
+        "fc_channel",
+        "fc_company",
+        "fc_date",
+        "fc_source",
         "modifiedbyyominame",
         "modifiedonbehalfbyyominame",
         "ownerid",

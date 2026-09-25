@@ -98,6 +98,26 @@
           "x-ms-schema-name": "fc_Calltoaction",
           "maxLength": 4000
         },
+        "fc_campaign": {
+          "type": "string",
+          "title": "Campaign",
+          "x-ms-dataverse-attribute": "fc_campaign",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "fc_Campaign",
+          "x-ms-dataverse-navigation-properties": [
+            "fc_Campaign"
+          ]
+        },
+        "fc_campaignname": {
+          "type": "string",
+          "title": "fc_campaignname",
+          "x-ms-dataverse-attribute": "fc_campaignname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "fc_CampaignName",
+          "x-ms-dataverse-attribute-of": "fc_campaign",
+          "x-ms-read-only": true,
+          "maxLength": 200
+        },
         "fc_channel": {
           "type": "string",
           "title": "Channel",

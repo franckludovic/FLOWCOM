@@ -110,6 +110,41 @@
           "entitySetName": "fc_companyintegrations",
           "logicalName": "fc_companyintegration",
           "isHidden": false
+        },
+        "campaigns": {
+          "entitySetName": "fc_campaigns",
+          "logicalName": "fc_campaign",
+          "isHidden": false
+        },
+        "campaignmetrics": {
+          "entitySetName": "fc_campaignmetrics",
+          "logicalName": "fc_campaignmetric",
+          "isHidden": false
+        },
+        "contacts": {
+          "entitySetName": "fc_contacts",
+          "logicalName": "fc_contact",
+          "isHidden": false
+        },
+        "contactidentities": {
+          "entitySetName": "fc_contactidentities",
+          "logicalName": "fc_contactidentity",
+          "isHidden": false
+        },
+        "timelineevents": {
+          "entitySetName": "fc_activities",
+          "logicalName": "fc_activity",
+          "isHidden": false
+        },
+        "aiinsights": {
+          "entitySetName": "fc_aiinsights",
+          "logicalName": "fc_aiinsight",
+          "isHidden": false
+        },
+        "aiactions": {
+          "entitySetName": "fc_aiactions",
+          "logicalName": "fc_aiaction",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""
