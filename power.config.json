@@ -23,18 +23,6 @@
         "workflowName": "6b03f808-0c38-8373-3ff6-81504e04372f"
       }
     },
-    "579edfcd-a400-4a44-8969-ec08d7804300": {
-      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
-      "displayName": "Logic flows",
-      "dataSources": [
-        "modelcall"
-      ],
-      "workflowDetails": {
-        "workflowEntityId": "114fe044-12b8-f111-aaae-70a8a5114222",
-        "workflowDisplayName": "ModelCall",
-        "workflowName": "1f545c59-d618-d849-f16a-884f01a8e4e5"
-      }
-    },
     "244c0e84-662a-42ac-87a8-8cb532273e72": {
       "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
       "displayName": "Logic flows",
@@ -45,6 +33,18 @@
         "workflowEntityId": "52be5cdc-dbb8-f111-aaae-70a8a5114222",
         "workflowDisplayName": "BufferCall",
         "workflowName": "45d4b32b-7567-c4ba-7f02-af42b8fe1e72"
+      }
+    },
+    "25812a28-054d-4378-a41c-c455968f3010": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "modelcall"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "114fe044-12b8-f111-aaae-70a8a5114222",
+        "workflowDisplayName": "ModelCall",
+        "workflowName": "1f545c59-d618-d849-f16a-884f01a8e4e5"
       }
     }
   },

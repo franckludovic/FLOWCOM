@@ -16,8 +16,12 @@ export interface ManualTriggerInput {
   text_4: string;
   // Please enter your input
   text_5: string;
+  // Optional JSON object merged into the provider request (e.g. tools)
+  text_6?: string;
 }
 
 export interface ResponseActionOutput {
   content?: string;
+  message?: string;
+  error?: string;
 }

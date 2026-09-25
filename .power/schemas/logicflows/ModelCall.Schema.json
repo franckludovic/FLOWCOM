@@ -115,6 +115,13 @@
               "x-ms-dynamically-added": true,
               "description": "Please enter your input",
               "x-ms-content-hint": "TEXT"
+            },
+            "text_6": {
+              "title": "extra",
+              "type": "string",
+              "x-ms-dynamically-added": true,
+              "description": "Optional JSON object merged into the provider request (e.g. tools)",
+              "x-ms-content-hint": "TEXT"
             }
           },
           "required": [
@@ -131,6 +138,16 @@
           "properties": {
             "content": {
               "title": "content",
+              "x-ms-dynamically-added": true,
+              "type": "string"
+            },
+            "message": {
+              "title": "message",
+              "x-ms-dynamically-added": true,
+              "type": "string"
+            },
+            "error": {
+              "title": "error",
               "x-ms-dynamically-added": true,
               "type": "string"
             }
