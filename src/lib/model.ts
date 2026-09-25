@@ -1,4 +1,3 @@
-import { supabase } from './supabase'
 import { ModelCallService } from '@/generated/services/ModelCallService'
 import { DEFAULT_MODEL_PROVIDER } from './integrations'
 
@@ -56,48 +55,33 @@ export async function callModelJSON<T>(
 }
 
 async function invokeModel(body: { companyId: string; messages: ModelMessage[]; options?: ModelOptions }) {
-  if (!import.meta.env.DEV) {
-    const options = body.options ?? {}
-    const request = ModelCallService.Run({
-      text: body.companyId,
-      text_1: DEFAULT_MODEL_PROVIDER.secretName,
-      text_2: options.model ?? 'openai/gpt-oss-120b',
-      text_3: JSON.stringify(body.messages),
-      text_4: String(options.temperature ?? 0.7),
-      text_5: String(options.max_tokens ?? 2048),
-    })
-    const timeout = new Promise<never>((_, reject) => {
-      window.setTimeout(() => reject(new Error('AI request timed out')), 30000)
-    })
-    const result = await Promise.race([request, timeout])
-    if (!result.success) {
-      const message = result.error instanceof Error
-        ? result.error.message
-        : result.error
-          ? String(result.error)
-          : 'AI request failed'
-      throw new Error(message)
-    }
-
-    const content = result.data?.content ?? ''
-    if (content === 'No API key was found for this company and provider.') {
-      throw new Error('No API key configured')
-    }
-    return { data: { content }, error: null }
-  }
-
-  const request = supabase.functions.invoke<{ content?: string; error?: string }>('groq', { body })
+  const options = body.options ?? {}
+  const request = ModelCallService.Run({
+    text: body.companyId,
+    text_1: DEFAULT_MODEL_PROVIDER.secretName,
+    text_2: options.model ?? 'openai/gpt-oss-120b',
+    text_3: JSON.stringify(body.messages),
+    text_4: String(options.temperature ?? 0.7),
+    text_5: String(options.max_tokens ?? 2048),
+  })
   const timeout = new Promise<never>((_, reject) => {
     window.setTimeout(() => reject(new Error('AI request timed out')), 30000)
   })
   const result = await Promise.race([request, timeout])
-  if (result.error) {
-    const context = (result.error as { context?: { json?: () => Promise<{ error?: string }> } }).context
-    const details = context?.json ? await context.json().catch(() => null) : null
-    throw new Error(details?.error ?? result.error.message)
+  if (!result.success) {
+    const message = result.error instanceof Error
+      ? result.error.message
+      : result.error
+        ? String(result.error)
+        : 'AI request failed'
+    throw new Error(message)
   }
-  if (result.data?.error) throw new Error(result.data.error)
-  return result
+
+  const content = result.data?.content ?? ''
+  if (content === 'No API key was found for this company and provider.') {
+    throw new Error('No API key configured')
+  }
+  return { data: { content } }
 }
 
 export function buildModelError(err: unknown): string {

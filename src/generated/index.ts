@@ -4,6 +4,7 @@
  */
 
 // Models
+export * as BufferCallModel from './models/BufferCallModel';
 export * as CommonModels from './models/CommonModels';
 export * as Fc_audiencesegmentsModel from './models/Fc_audiencesegmentsModel';
 export * as Fc_calendaritemsModel from './models/Fc_calendaritemsModel';
@@ -21,6 +22,7 @@ export * as ModelCallModel from './models/ModelCallModel';
 export * as SaveCompanySecretModel from './models/SaveCompanySecretModel';
 
 // Services
+export * from './services/BufferCallService';
 export * from './services/Fc_audiencesegmentsService';
 export * from './services/Fc_calendaritemsService';
 export * from './services/Fc_companiesService';

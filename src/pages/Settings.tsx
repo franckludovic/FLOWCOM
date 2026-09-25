@@ -5,9 +5,10 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useCompany } from '@/contexts/CompanyContext'
 import { useBuffer } from '@/contexts/BufferContext'
 import {
-  INTEGRATIONS, saveBufferToken,
+  INTEGRATIONS,
   type IntegrationDefinition, type IntegrationId, type ProviderOption,
 } from '@/lib/integrations'
+import { saveBufferToken } from '@/lib/buffer'
 import { cn } from '@/lib/utils'
 
 type IntegrationStatus = 'connected' | 'notConnected' | 'checking'

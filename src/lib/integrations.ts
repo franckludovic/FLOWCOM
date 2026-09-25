@@ -1,5 +1,5 @@
 import type { TranslationKey } from '@/i18n/fr'
-import { supabase } from './supabase'
+import { SaveCompanySecretService } from '@/generated/services/SaveCompanySecretService'
 
 // Registry of every external service a company can connect. The UI is built
 // around roles (AI model, social publishing); providers are interchangeable
@@ -58,14 +58,16 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
   },
 ]
 
-export async function saveBufferToken(companyId: string, accessToken: string): Promise<void> {
-  const { data, error } = await supabase.functions.invoke<{ connected?: boolean; error?: string }>('save-buffer-integration', {
-    body: { companyId, accessToken },
-  })
-  if (error) {
-    const context = (error as { context?: { json?: () => Promise<{ error?: string }> } }).context
-    const details = context?.json ? await context.json().catch(() => null) : null
-    throw new Error(details?.error ?? error.message)
+// Sends a provider secret to the SaveCompanySecret flow, which stores it in the
+// column-secured Company Secrets table. `providerName` must match a Provider choice.
+export async function saveCompanySecret(companyId: string, providerName: string, secret: string): Promise<void> {
+  const result = await SaveCompanySecretService.Run({ text: companyId, text_1: providerName, text_2: secret })
+  if (!result.success) {
+    const message = result.error instanceof Error
+      ? result.error.message
+      : result.error
+        ? String(result.error)
+        : 'Unable to save the company secret'
+    throw new Error(message)
   }
-  if (data?.error || !data?.connected) throw new Error(data?.error ?? 'Buffer connection failed')
 }

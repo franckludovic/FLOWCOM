@@ -3,34 +3,17 @@
  * ─────────────
  * Fetches org ID + channels ONCE when the app mounts, caches for the session.
  *
- * All Buffer API calls go through the Supabase Edge Function `buffer` which
- * keeps each company's Buffer credential server-side. Works in dev AND
- * production - no Vite proxy needed.
+ * All Buffer API calls go through bufferQuery (lib/buffer), which runs them
+ * through the BufferCall flow so each company's Buffer token stays server-side.
  */
 
 import {
   createContext, useContext, useState, useEffect, useCallback, type ReactNode
 } from 'react'
-import { supabase } from '@/lib/supabase'
+import { bufferQuery } from '@/lib/buffer'
 import { useCompany } from './CompanyContext'
 
-// ─── Shared Buffer query helper ───────────────────────────────────────────────
-// The Edge Function reads the Buffer key from Supabase secrets. No provider
-// credential is accepted from or bundled into the browser application.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function bufferQuery(companyId: string, query: string, variables?: object): Promise<any> {
-  const { data, error } = await supabase.functions.invoke('buffer', {
-    body: { companyId, query, variables },
-  })
-  if (error) {
-    const ctx = (error as { context?: { json?: () => Promise<{ error?: string }> } }).context
-    const details = ctx?.json ? await ctx.json().catch(() => null) : null
-    throw new Error(details?.error ?? error.message)
-  }
-  if (!data) throw new Error('Empty response from Buffer proxy')
-  if (data?.errors?.length) throw new Error(data.errors[0].message)
-  return data?.data ?? data
-}
+export { bufferQuery }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface BufferChannel {

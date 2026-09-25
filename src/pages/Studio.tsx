@@ -15,6 +15,7 @@ import {
   Play, Pause, Volume2, VolumeX, ShieldCheck, CalendarClock
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { FallbackImage } from '@/components/FallbackImage'
 
 // ─── Cloudinary ───────────────────────────────────────────────────────────────
 const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string | undefined
@@ -999,11 +1000,13 @@ export default function StudioPage() {
                               ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 ring-1 ring-blue-500'
                               : 'bg-[var(--color-surface-alt)] border-[var(--color-border)] hover:border-blue-300'
                           )}>
-                          {p.avatar
-                            ? <img src={p.avatar} alt="" className="w-7 h-7 rounded-full shrink-0" />
-                            : <div className="w-7 h-7 rounded-full bg-[var(--color-bg)] shrink-0 flex items-center justify-center text-xs font-bold text-[var(--color-text-muted)]">
-                                {p.name?.[0]?.toUpperCase() ?? '?'}
-                              </div>}
+                          <FallbackImage
+                            src={p.avatar}
+                            className="w-7 h-7 rounded-full shrink-0"
+                            fallback={<div className="w-7 h-7 rounded-full bg-[var(--color-bg)] shrink-0 flex items-center justify-center text-xs font-bold text-[var(--color-text-muted)]">
+                              {p.name?.[0]?.toUpperCase() ?? '?'}
+                            </div>}
+                          />
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-[var(--color-text)] truncate">{p.name}</p>
                             <p className="text-[9px] text-[var(--color-text-muted)] capitalize">{p.service}</p>

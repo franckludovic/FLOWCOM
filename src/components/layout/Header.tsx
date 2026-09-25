@@ -1,13 +1,11 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
-  Sun, Moon, Building2, ChevronDown, LogOut, Check, Menu, X, Users, Settings
+  Sun, Moon, Building2, ChevronDown, Check, Menu, X, Users, Settings
 } from 'lucide-react'
 import { useI18n } from '@/contexts/I18nContext'
 import { useTheme } from '@/contexts/ThemeContext'
-import { useAuth } from '@/contexts/AuthContext'
 import { useCompany } from '@/contexts/CompanyContext'
-import { supabase } from '@/lib/supabase'
 import { listDataverseCompanyMembers } from '@/lib/dataverse'
 import { cn } from '@/lib/utils'
 
@@ -20,18 +18,13 @@ export default function Header({ onToggleMobileMenu }: HeaderProps) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const { theme, toggle: toggleTheme } = useTheme()
-  const { signOut } = useAuth()
   const { companies, activeCompany, setActiveCompany } = useCompany()
 
   const [companyMenuOpen, setCompanyMenuOpen] = useState(false)
   const [membersOpen, setMembersOpen] = useState(false)
   const [members, setMembers] = useState<Array<{ user_id: string; role: string; name: string; email: string }>>([])
-  const [memberEmail, setMemberEmail] = useState('')
-  const [memberRole, setMemberRole] = useState<'admin' | 'editor' | 'viewer'>('editor')
   const [membersLoading, setMembersLoading] = useState(false)
-  const [memberSaving, setMemberSaving] = useState(false)
   const [memberError, setMemberError] = useState('')
-  const [memberSaved, setMemberSaved] = useState(false)
 
   const loadMembers = async () => {
     if (!activeCompany) return
@@ -47,35 +40,8 @@ export default function Header({ onToggleMobileMenu }: HeaderProps) {
 
   const openMembers = async () => {
     setMembersOpen(true)
-    setMemberEmail('')
     setMemberError('')
     await loadMembers()
-  }
-
-  const handleInviteMember = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!activeCompany || !memberEmail.trim()) return
-    setMemberSaving(true)
-    setMemberError('')
-    setMemberSaved(false)
-    try {
-      const { data, error } = await supabase.functions.invoke<{ invited?: boolean; error?: string }>('invite-company-member', {
-        body: { companyId: activeCompany.id, email: memberEmail.trim(), role: memberRole },
-      })
-      if (error) {
-        const context = (error as { context?: { json?: () => Promise<{ error?: string }> } }).context
-        const details = context?.json ? await context.json().catch(() => null) : null
-        throw new Error(details?.error ?? error.message)
-      }
-      if (data?.error || !data?.invited) throw new Error(data?.error ?? 'Invitation failed')
-      setMemberEmail('')
-      setMemberSaved(true)
-      await loadMembers()
-    } catch (error) {
-      setMemberError(error instanceof Error ? error.message : 'Invitation failed')
-    } finally {
-      setMemberSaving(false)
-    }
   }
 
   return (
@@ -152,7 +118,7 @@ export default function Header({ onToggleMobileMenu }: HeaderProps) {
         )}
       </div>
 
-      {/* Right controls: Lang, Theme, Settings, Sign out */}
+      {/* Right controls: Lang, Theme, Settings */}
       <div className="flex items-center gap-1 sm:gap-2">
         {/* Language switch */}
         <button
@@ -185,15 +151,6 @@ export default function Header({ onToggleMobileMenu }: HeaderProps) {
         >
           <Settings className="w-4 h-4" />
         </button>
-
-        {/* Sign out */}
-        <button
-          onClick={signOut}
-          className="p-1.5 sm:p-2 rounded-lg text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)] transition-colors"
-          title={t('header.logout')}
-        >
-          <LogOut className="w-4 h-4" />
-        </button>
       </div>
 
       {/* Backdrop for company dropdown */}
@@ -221,10 +178,11 @@ export default function Header({ onToggleMobileMenu }: HeaderProps) {
               </div>
             </div>
 
+            {memberError && <p className="text-xs text-red-600 dark:text-red-400 mb-3">{memberError}</p>}
             {membersLoading ? (
               <p className="text-sm text-[var(--color-text-muted)]">Loading members…</p>
             ) : (
-              <div className="space-y-2 max-h-48 overflow-y-auto mb-5">
+              <div className="space-y-2 max-h-48 overflow-y-auto">
                 {members.map(member => (
                   <div key={member.user_id} className="flex items-center justify-between rounded-xl bg-[var(--color-surface-alt)] px-3 py-2">
                     <div className="min-w-0">
@@ -235,41 +193,6 @@ export default function Header({ onToggleMobileMenu }: HeaderProps) {
                   </div>
                 ))}
               </div>
-            )}
-
-            {(activeCompany?.role === 'owner' || activeCompany?.role === 'admin') && (
-              <form onSubmit={handleInviteMember} className="border-t border-[var(--color-border)] pt-4 space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Invite a member</p>
-                <div className="flex gap-2">
-                  <input
-                    type="email"
-                    value={memberEmail}
-                    onChange={e => setMemberEmail(e.target.value)}
-                    placeholder="colleague@company.com"
-                    className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)] text-[var(--color-text)] text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <select
-                    value={memberRole}
-                    onChange={e => setMemberRole(e.target.value as typeof memberRole)}
-                    className="w-28 px-2 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)] text-[var(--color-text)] text-sm outline-none"
-                  >
-                    <option value="admin">Admin</option>
-                    <option value="editor">Editor</option>
-                    <option value="viewer">Viewer</option>
-                  </select>
-                </div>
-                {memberError && <p className="text-xs text-red-600 dark:text-red-400">{memberError}</p>}
-                {memberSaved && <p className="text-xs text-emerald-600 dark:text-emerald-400">Member invited.</p>}
-                <div className="flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={memberSaving || !memberEmail.trim()}
-                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50"
-                  >
-                    {memberSaving ? 'Inviting…' : 'Invite member'}
-                  </button>
-                </div>
-              </form>
             )}
           </div>
         </div>

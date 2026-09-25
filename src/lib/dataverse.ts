@@ -127,7 +127,6 @@ function profileFromRow(row: Fc_flowcomprofiles, fallbackUser: AuthUser): Profil
     id: row.fc_flowcomprofileid,
     name: row.fc_name ?? fallbackUser.user_metadata?.name ?? fallbackUser.user_metadata?.full_name ?? fallbackUser.email ?? 'FlowCom user',
     email: row.fc_email ?? fallbackUser.email ?? '',
-    api_key: null,
     lang: row.fc_language === 'en' ? 'en' : 'fr',
     created_at: createdAt(row),
   }

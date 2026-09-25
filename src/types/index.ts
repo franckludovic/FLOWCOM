@@ -3,7 +3,6 @@ export interface Profile {
   id: string
   name: string
   email: string
-  api_key: string | null
   lang: 'fr' | 'en'
   created_at: string
 }

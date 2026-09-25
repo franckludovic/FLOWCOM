@@ -10,6 +10,7 @@ import { useBuffer, bufferQuery } from '@/contexts/BufferContext'
 import { callModelJSON, buildModelError } from '@/lib/model'
 import { buildAiContext } from '@/lib/aiContext'
 import { cn } from '@/lib/utils'
+import { FallbackImage } from '@/components/FallbackImage'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface BufferPost {
@@ -146,22 +147,21 @@ function PostCard({ post, lang }: { post: BufferPost; lang: string }) {
         {/* Channel + Buffer link */}
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="flex items-center gap-2.5 min-w-0">
-            {post.channelAvatar ? (
-              <img
-                src={post.channelAvatar}
-                alt={post.channelName}
-                className="w-8 h-8 rounded-full shrink-0 object-cover ring-2 ring-[var(--color-border)]"
-              />
-            ) : (
-              <div className={cn(
-                'w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-white',
-                SERVICE_COLORS[post.channelService]?.startsWith('from-')
-                  ? `bg-gradient-to-br ${SERVICE_COLORS[post.channelService]}`
-                  : (SERVICE_COLORS[post.channelService] ?? 'bg-gray-500')
-              )}>
-                <ServiceIcon service={post.channelService} className="w-4 h-4" />
-              </div>
-            )}
+            <FallbackImage
+              src={post.channelAvatar}
+              alt={post.channelName}
+              className="w-8 h-8 rounded-full shrink-0 object-cover ring-2 ring-[var(--color-border)]"
+              fallback={
+                <div className={cn(
+                  'w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-white',
+                  SERVICE_COLORS[post.channelService]?.startsWith('from-')
+                    ? `bg-gradient-to-br ${SERVICE_COLORS[post.channelService]}`
+                    : (SERVICE_COLORS[post.channelService] ?? 'bg-gray-500')
+                )}>
+                  <ServiceIcon service={post.channelService} className="w-4 h-4" />
+                </div>
+              }
+            />
             <div className="min-w-0">
               <p className="text-sm font-semibold text-[var(--color-text)] truncate leading-tight">
                 {post.channelName}
@@ -211,11 +211,11 @@ function PostCard({ post, lang }: { post: BufferPost; lang: string }) {
         {post.assets.length > 0 && (
           <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
             {post.assets.map((asset, i) => (
-              <img
+              <FallbackImage
                 key={i}
                 src={asset.thumbnail || asset.source}
-                alt=""
                 className="w-16 h-16 object-cover rounded-lg border border-[var(--color-border)] shrink-0 bg-[var(--color-bg)]"
+                fallback={<div className="w-16 h-16 rounded-lg border border-[var(--color-border)] shrink-0 bg-[var(--color-bg)]" />}
               />
             ))}
           </div>
@@ -614,10 +614,11 @@ export default function PublishingHistoryPage() {
                     : 'border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)] hover:border-emerald-400'
                 )}
               >
-                {ch.avatar
-                  ? <img src={ch.avatar} alt="" className="w-4 h-4 rounded-full object-cover" />
-                  : <ServiceIcon service={ch.service} className="w-4 h-4" />
-                }
+                <FallbackImage
+                  src={ch.avatar}
+                  className="w-4 h-4 rounded-full object-cover"
+                  fallback={<ServiceIcon service={ch.service} className="w-4 h-4" />}
+                />
                 <span>{ch.name}</span>
                 <span className={cn('text-[10px] uppercase tracking-wide', active ? 'text-emerald-100' : 'text-[var(--color-text-muted)]')}>
                   {SERVICE_LABELS[ch.service] ?? ch.service}

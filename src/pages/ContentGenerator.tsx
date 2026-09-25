@@ -13,7 +13,6 @@ import { useCompany } from '@/contexts/CompanyContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { callModelJSON, buildModelError } from '@/lib/model'
 import { buildAiContext } from '@/lib/aiContext'
-import { supabase } from '@/lib/supabase'
 import { createDataverseLibraryItem } from '@/lib/dataverse'
 import { cn } from '@/lib/utils'
 
@@ -136,9 +135,6 @@ export default function ContentGeneratorPage() {
   const [localSlang, setLocalSlang]   = useState(savedState?.localSlang || '')
   const [calendarGoal, setCalendarGoal] = useState(savedState?.calendarGoal || '')
   const [post, setPost]               = useState<GeneratedPost | null>(savedState?.post || null)
-  const [imageSeed, setImageSeed]     = useState(Date.now())
-  const [hfImageUrl, setHfImageUrl]   = useState<string>('')
-  const [generatingImage, setGeneratingImage] = useState(false)
 
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState('')
@@ -150,36 +146,6 @@ export default function ContentGeneratorPage() {
   const [hookScore, setHookScore]       = useState<HookScore | null>(null)
   const [hookScoring, setHookScoring]   = useState(false)
   const scoredContentRef                = useRef<string>('')
-
-  useEffect(() => {
-    if (!post?.visualIdea) return
-
-    let active = true
-    let imageUrl: string | null = null
-    const fetchImage = async () => {
-      setGeneratingImage(true)
-      try {
-        const { data, error, response } = await supabase.functions.invoke('generate-image', {
-          body: { prompt: post.visualIdea, seed: imageSeed },
-        })
-        if (error) throw error
-        if (!(data instanceof Blob)) throw new Error('Image service returned an invalid response')
-        const contentType = response?.headers.get('X-Image-Content-Type') || 'image/jpeg'
-        imageUrl = URL.createObjectURL(new Blob([data], { type: contentType }))
-        if (active) setHfImageUrl(imageUrl)
-      } catch (err) {
-        console.error('Image generation failed', err)
-        if (active) setHfImageUrl('') 
-      } finally {
-        if (active) setGeneratingImage(false)
-      }
-    }
-    fetchImage()
-    return () => {
-      active = false
-      if (imageUrl) URL.revokeObjectURL(imageUrl)
-    }
-  }, [post?.visualIdea, imageSeed])
 
   // Save to localStorage when things change
   useEffect(() => {
@@ -240,7 +206,6 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
 
     try {
       const generated = await callModelJSON<GeneratedPost>(activeCompany?.id ?? '', [{ role: 'system', content: sys }, { role: 'user', content: usr }], { temperature: 0.8, max_tokens: 3000, requiredKeys: ['content', 'visualIdea'] })
-      setImageSeed(Date.now())
       setPost(generated)
     } catch (e) { setError(t(buildModelError(e) as Parameters<typeof t>[0])) }
     setLoading(false)
@@ -526,64 +491,12 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
                 onChange={val => setPost(prev => prev ? { ...prev, content: val } : prev)}
               />
 
-              {/* Right Card: AI Image Generator */}
-              <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 flex flex-col gap-3 h-full overflow-hidden hover:border-violet-200 dark:hover:border-violet-800 transition-colors">
-                <div className="flex items-center gap-2 shrink-0">
-                  <div className="w-7 h-7 rounded-lg bg-[var(--color-surface-alt)] flex items-center justify-center text-cyan-500">
-                    <Camera className="w-3.5 h-3.5" />
-                  </div>
-                  <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider">{SECTION_LABELS.visualIdea[lang]}</span>
-                </div>
-                <div className="flex gap-2">
-                  <textarea
-                    value={post.visualIdea}
-                    onChange={e => setPost(prev => prev ? { ...prev, visualIdea: e.target.value } : prev)}
-                    placeholder={lang === 'fr' ? 'Prompt pour l\'image...' : 'Image prompt...'}
-                    className="w-full h-[60px] text-xs text-[var(--color-text)] bg-[var(--color-surface-alt)] rounded-lg px-3 py-2 resize-none outline-none focus:ring-2 focus:ring-cyan-500 leading-relaxed border border-[var(--color-border)]"
-                  />
-                  <button
-                    onClick={() => setImageSeed(Date.now())}
-                    className="px-3 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-200 dark:border-cyan-800 transition-colors flex flex-col items-center justify-center gap-1 shrink-0"
-                    title={lang === 'fr' ? 'Générer une nouvelle image' : 'Generate new image'}
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    <span className="text-[9px] font-bold">Retry</span>
-                  </button>
-                </div>
-                <div className="flex-1 min-h-[200px] w-full bg-[var(--color-surface-alt)] rounded-xl border border-[var(--color-border)] overflow-hidden flex items-center justify-center relative group">
-                  {generatingImage && (
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[var(--color-surface-alt)]/80 backdrop-blur-sm">
-                      <RefreshCw className="w-8 h-8 text-cyan-500 animate-spin mb-3" />
-                      <p className="text-xs font-semibold text-cyan-600 dark:text-cyan-400 animate-pulse">
-                        {lang === 'fr' ? 'Génération de haute qualité...' : 'Generating high quality image...'}
-                      </p>
-                    </div>
-                  )}
-                  {post.visualIdea.trim() ? (
-                    <>
-                      <img
-                        src={hfImageUrl || `https://image.pollinations.ai/prompt/${encodeURIComponent(post.visualIdea.replace(/\n/g, ' ').trim().substring(0, 800))}?width=1024&height=1024&nologo=true&seed=${imageSeed}`}
-                        alt="AI Generated Visual"
-                        className={cn("w-full h-full object-cover transition-opacity duration-300", generatingImage ? "opacity-30" : "opacity-100")}
-                        loading="lazy"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = `https://pollinations.ai/p/${encodeURIComponent(post.visualIdea.replace(/[^a-zA-Z0-9 ]/g, '').trim().substring(0, 100))}?width=1024&height=1024&nologo=true&seed=${imageSeed}`
-                        }}
-                      />
-                      {!generatingImage && (
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white p-4 text-center pointer-events-none">
-                          <Camera className="w-6 h-6 mb-2 opacity-80" />
-                          <p className="text-xs font-semibold">{lang === 'fr' ? 'Clic droit pour sauvegarder' : 'Right click to save'}</p>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="text-xs text-[var(--color-text-muted)] text-center p-4">
-                      {lang === 'fr' ? 'Entrez un prompt pour générer.' : 'Enter a prompt to generate.'}
-                    </div>
-                  )}
-                </div>
-              </div>{/* end right card */}
+              {/* Right Card: visual brief for the designer */}
+              <SectionCard
+                icon={Camera} iconColor="text-cyan-500"
+                label={SECTION_LABELS.visualIdea[lang]} content={post.visualIdea} editable={editable}
+                onChange={val => setPost(prev => prev ? { ...prev, visualIdea: val } : prev)}
+              />
 
             </div>{/* end grid */}
 

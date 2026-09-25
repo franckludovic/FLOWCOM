@@ -34,6 +34,18 @@
         "workflowDisplayName": "ModelCall",
         "workflowName": "1f545c59-d618-d849-f16a-884f01a8e4e5"
       }
+    },
+    "244c0e84-662a-42ac-87a8-8cb532273e72": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "buffercall"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "52be5cdc-dbb8-f111-aaae-70a8a5114222",
+        "workflowDisplayName": "BufferCall",
+        "workflowName": "45d4b32b-7567-c4ba-7f02-af42b8fe1e72"
+      }
     }
   },
   "databaseReferences": {

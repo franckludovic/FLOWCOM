@@ -101,7 +101,7 @@ export default function LibraryPage() {
 
   // ── AI content scores ─────────────────────────────────────────────────────
   // score: 'ready' | 'good' | 'needs-work'
-  // Primary store: Supabase content_scores table (syncs across devices)
+  // Primary store: Dataverse Content Score table (syncs across devices)
   // Secondary: localStorage for instant reads without waiting for DB
   type ScoreLevel = 'ready' | 'good' | 'needs-work'
   const localKey = `flowcom:library_scores:${activeCompany?.id ?? 'default'}`
@@ -125,7 +125,7 @@ export default function LibraryPage() {
     })
   }, [activeCompany?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Persist new scores to Supabase + localStorage
+  // Persist new scores to Dataverse + localStorage
   const persistScores = async (newScores: Record<string, ScoreLevel>) => {
     if (!activeCompany || Object.keys(newScores).length === 0) return
     setScores(prev => {
