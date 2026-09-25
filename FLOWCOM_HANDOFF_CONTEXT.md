@@ -1,381 +1,153 @@
-# FLOWCOM handoff context
+# FlowCom handoff context
 
 Updated: 2026-09-25 (Africa/Douala)
 
-This file is a continuation brief for another model or future session. It contains project context, the work already completed, the current blocker, and the safest next steps. It intentionally contains no API keys, access tokens, passwords, or secret values.
-
-## User’s goal
-
-FLOWCOM is being migrated from the previous Supabase/edge-function AI path toward Power Platform and Dataverse. The application should:
-
-1. Store company data in Dataverse.
-2. Store each company’s AI/API secret securely in Dataverse.
-3. Call an AI provider through a Power Automate flow.
-4. Keep the application model-agnostic so the model can be changed later.
-5. Eventually allow multiple providers such as Groq, OpenAI, and Anthropic.
-
-## Project location
-
-Repository/workspace:
-
-`C:\Users\Metatron\Desktop\FLOWCOM`
-
-The app is a Vite/React/TypeScript application. The Power Platform code-app configuration is in `power.config.json`.
-
-## Current environment and Power Platform objects
-
-Power Platform environment:
-
-`7a0e4eed-419e-ec1f-b18f-db53cd2b62f3` (shown as “Franck’s Env”)
-
-Solution:
-
-- Display name: `FlowCom core`
-- Solution ID: `76d1352c-45b7-f111-aaae-70a8a5114222`
-
-Code app:
-
-- App ID: `ee37bbf2-90e2-4725-95f3-5ef5cd4f2575`
-
-Cloud flows:
-
-- `SaveCompanySecret`
-  - Workflow entity ID: `bff88e57-78b7-f111-aaae-70a8a5114222`
-  - Workflow name: `6b03f808-0c38-8373-3ff6-81504e04372f`
-- `ModelCall`
-  - Workflow entity ID: `114fe044-12b8-f111-aaae-70a8a5114222`
-  - Workflow name: `1f545c59-d618-d849-f16a-884f01a8e4e5`
-
-## Dataverse work completed
-
-The `FlowCom core` solution contains custom tables including:
-
-- Company (`fc_company`)
-- Company Secrets (`fc_companysecret`, entity set shown as `fc_companysecrets1`)
-- Company Membership
-- Company Integration
-- FlowCom Profile
-- Product
-- Audience Segment
-- Key Message
-- Calendar Item
-- Library Item
-- Roadmap Milestone
-- Weekly Report
-- Content Score
-
-The `Company Secrets` table has these important columns:
-
-- Access Token: logical name `fc_accesstoken` / schema display shown as `fc_AccessToken`; column security was enabled.
-- Company: lookup; schema name `fc_Company`, logical name `fc_company`; related table is Company.
-- Provider: choice; logical name `fc_provider`; current choices include `Groq`, `Buffer`, and `HF`.
-- Status: choice; current value used by the flow is `Connected`.
-- Secret Label: primary name column.
-
-The Company lookup metadata was checked in Power Apps. Its logical name is definitely `fc_company`. Its related Company table primary key is expected to be `fc_companyid`.
-
-## SaveCompanySecret flow
-
-Trigger: `Power Apps (V2)` with text inputs:
-
-- `companyId`
-- `provider`
-- `accessToken`
-
-Intended behavior:
-
-1. List rows from Company Secrets for the company.
-2. Filter the returned rows by provider.
-3. If a matching row exists, update it.
-4. Otherwise, add a new row.
-
-Important field mapping:
-
-- Company = `companyId`
-- Access Token = `accessToken`
-- Provider = the Dataverse choice `Groq` for the current implementation
-- Status = `Connected`
-
-Provider must not be left blank on either the Update row or Add a new row branch. The app currently sends the provider text `Groq`.
-
-The flow has no secret value documented here. Never put the actual token into this file or into screenshots.
-
-The frontend calls this flow in production from `src/contexts/AuthContext.tsx`:
-
-```ts
-SaveCompanySecretService.Run({
-  text: companyId,
-  text_1: 'Groq',
-  text_2: key,
-})
-```
-
-## ModelCall flow
-
-Trigger: `Power Apps (V2)` with these text inputs:
-
-- `companyId`
-- `provider`
-- `model`
-- `messages`
-- `temperature`
-- `maxTokens`
-
-Current intended flow:
-
-1. List Company Secrets for the company.
-2. Filter the rows to the requested provider.
-3. Check whether a matching secret exists.
-4. If yes, call the provider HTTP endpoint.
-5. Return the model’s message content to Power Apps.
-6. If no secret exists, return `No API key was found for this company and provider.`
-
-Current provider implementation:
-
-- Provider: Groq
-- HTTP method: `POST`
-- Endpoint: `https://api.groq.com/openai/v1/chat/completions`
-- Headers: `Content-Type: application/json` and `Authorization: Bearer <secret>`
-- Body contains dynamic model, messages, temperature, and max_tokens.
-
-The flow is called `ModelCall` deliberately. `Groq` is the current provider, not the model. A model-agnostic design means the model is a separate input. Provider-agnostic routing for OpenAI/Anthropic will require additional branches later.
-
-## Frontend changes already completed
-
-### AI client rename
-
-The shared AI client was renamed from Groq-specific naming to model-agnostic naming:
-
-- `src/lib/groq.ts` was renamed to `src/lib/model.ts`.
-- `src/lib/groq.test.ts` was renamed to `src/lib/model.test.ts`.
-- `GroqMessage` became `ModelMessage`.
-- `callGroq` became `callModel`.
-- `callGroqJSON` became `callModelJSON`.
-- Groq-specific validation/error helper names were changed to model-neutral names.
-
-Production `src/lib/model.ts` calls `ModelCallService.Run`. It currently sends:
-
-- `text`: company ID
-- `text_1`: `Groq`
-- `text_2`: requested model or default `openai/gpt-oss-120b`
-- `text_3`: JSON string of messages
-- `text_4`: temperature as text
-- `text_5`: max tokens as text
-
-The default model should be reviewed after the flow reaches the HTTP step. It must be a model currently supported by the selected provider/account.
-
-### Generated flow services
-
-Generated files include:
-
-- `src/generated/models/ModelCallModel.ts`
-- `src/generated/services/ModelCallService.ts`
-- `src/generated/models/SaveCompanySecretModel.ts`
-- `src/generated/services/SaveCompanySecretService.ts`
-- `.power/schemas/logicflows/ModelCall.Schema.json`
-- `.power/schemas/logicflows/SaveCompanySecret.Schema.json`
-
-### Other frontend fixes
-
-- Dataverse error handling was improved in `src/lib/dataverse.ts` so object-shaped errors are serialized instead of appearing only as `[object Object]`.
-- Memory form hydration was updated in `src/pages/Memory.tsx` so it refreshes when the active company becomes available.
-- The Company save issue caused by a too-long Short Description was diagnosed from the Dataverse truncation error. The user shortened the description and the company then saved.
-
-## Current failure and what it means
-
-The browser reports:
-
-```text
-POST https://...environment.api.powerplatform.com/.../triggers/manual/run?api-version=2015-02-01-preview 502 (Bad Gateway)
-```
-
-This is only the Power Apps/Power Automate wrapper error. It does not prove that the API key is invalid.
-
-The latest confirmed `ModelCall` run was inspected in Power Automate run history. The run reached `List rows 2` and failed before `Filter array`, `Condition`, or the HTTP action.
-
-The confirmed latest internal error was:
-
-```text
-Action 'List_rows_2' failed:
-Could not find a property named '_fc_company_value'
-on type 'Microsoft.Dynamics.CRM.fc_companysecret'.
-```
-
-Earlier, before the property error, the filter also failed once because it was generated without a space:
-
-```text
-_fc_company_value eq33e2ff6c-...
-```
-
-The missing-space problem was corrected by entering the filter as an `fx` expression token. However, `_fc_company_value` itself is not accepted by the current `List rows 2` action/table metadata.
-
-## Immediate next step
-
-In `ModelCall` → `List rows 2` → `Filter rows`, replace the current expression with this expression through the **Expression** picker:
-
-```text
-concat('fc_company/fc_companyid eq ', string(triggerBody()?['text']))
-```
-
-Use the expression editor, not plain text. Do not add `@`, `@{}`, backticks, or quotes around the GUID. After pressing **OK/Update**, the field should show a purple `fx` token.
-
-This uses the lookup navigation-property pattern rather than the rejected `_fc_company_value` property. Microsoft’s Dataverse documentation describes filtering related lookup values through a navigation-property path and using OData-style filter expressions.
-
-Save the flow and retry one AI recommendation. Then inspect the newest `ModelCall` run:
-
-1. If `List rows 2` succeeds, inspect `Filter array`.
-2. If `Filter array` is empty, verify the Company Secrets row’s Company and Provider values.
-3. If the HTTP step fails with `401`, inspect the secured Access Token read permission and Authorization header; do not expose the key.
-4. If HTTP fails with `400` or “model not found,” change the model input to one listed as available by the provider.
-5. If HTTP succeeds but the Power Apps response fails, inspect the Respond to a Power App or flow action and its content expression.
-
-## Secret and permission checks
-
-The Access Token column is secured. The Dataverse connection used by the flows is the user connection `tankeu.frank@africauniv.tech` / Microsoft Dataverse. If the flow can find the row but the token is empty, the connection user or its column-security profile needs read access to `fc_accesstoken`.
-
-Do not disable security permanently. If necessary for diagnosis, first confirm the flow connection and column-security read permission. Never paste the token into chat, screenshots, source code, or this file.
-
-## Complete input and secret map
-
-This section lists every input name and secret-related location so another model can continue without guessing. Actual credential values are intentionally redacted.
-
-### SaveCompanySecret trigger inputs
-
-The Power Apps (V2) trigger has three text inputs. The generated schema uses the generic internal names below:
-
-| User-facing input | Generated internal name | Meaning | Secret? |
-|---|---|---|---|
-| `companyId` | `text` | Dataverse Company row GUID | No |
-| `provider` | `text_1` | Current value `Groq` | No |
-| `accessToken` | `text_2` | The provider API key/token entered by the company owner | **Yes; value redacted** |
-
-Frontend production call in `src/contexts/AuthContext.tsx`:
-
-```ts
-SaveCompanySecretService.Run({
-  text: companyId,
-  text_1: 'Groq',
-  text_2: key,
-})
-```
-
-The `key` variable is the sensitive value typed by the user. It must not be copied into source code, logs, screenshots, chat, or this handoff file.
-
-### SaveCompanySecret Dataverse destinations
-
-The flow writes to the `Company Secrets` table (`fc_companysecret`):
-
-| Dataverse field | Intended value | Secret? |
+Continuation brief for a future session or another model: what FlowCom is, how
+it is built, where everything lives, and what comes next. It contains no API
+keys, tokens or passwords; never add any.
+
+## Goal
+
+FlowCom integrates AI into the company's marketing work and supports
+data-driven decisions. The AI must see context across every source (content,
+campaigns, social publishing, and later Odoo CRM and WhatsApp) through one
+linked data model, while people stay in control of every change.
+
+## Status
+
+The migration from Supabase to Power Platform is **complete**: no Supabase
+code, functions or dependencies remain. Working today:
+
+- Company memory, editorial calendar, content generator, library, Studio
+  (publishing via Buffer), weekly report, roadmap, publishing history.
+- Settings page (⚙ in the top bar): one row per role (AI model, social
+  publishing); providers are options inside a role.
+- Campaigns: list, editor, KPIs against targets, AI brief and analysis,
+  Buffer and manual results, linked content, geographic target zones.
+  Campaigns steer Studio, the Content Generator and the Calendar (channels,
+  dates, brief, UTM-tagged links, automatic linking).
+- AI assistant (✨ in the top bar): tool-based answers with charts, tables,
+  images and sources; proposed actions that run only after approval; weekly
+  digest; saved conversations.
+
+## Environment
+
+| Item | Value |
+|---|---|
+| Power Platform environment | Franck's Env, `7a0e4eed-419e-ec1f-b18f-db53cd2b62f3` |
+| Dataverse org | `https://org160fcf6d.crm3.dynamics.com` |
+| Solution | FlowCom core, unique name `FlowComcore`, publisher prefix `fc`, choice values start at `122370000` |
+| Code app | `ee37bbf2-90e2-4725-95f3-5ef5cd4f2575` |
+| Repository | `C:\Users\Metatron\Desktop\FLOWCOM` (Vite, React, TypeScript), branch `main` |
+
+Identity comes from the Power Apps host (Microsoft Entra, `getContext()`).
+FlowCom has no sign-in of its own; plain `npm run dev` shows the "open from
+Power Apps" page. Use `npm run power:run` locally.
+
+## Cloud flows (all in FlowCom core)
+
+| Flow | Inputs (generated names) | Does |
 |---|---|---|
-| Company (`fc_company`) | `companyId` GUID | No |
-| Provider (`fc_provider`) | Choice `Groq` | No |
-| Access Token (`fc_accesstoken`, schema shown as `fc_AccessToken`) | `accessToken` / `key` | **Yes; stored in secured column** |
-| Status (`fc_status`) | Choice `Connected` | No |
-| Secret Label (`fc_Newcolumn`) | Any non-secret label required by the table | No |
+| **SaveCompanySecret** | `text` companyId, `text_1` provider name (`Groq`, `Buffer`), `text_2` secret | Upserts the company's row in Company Secrets (`fc_companysecrets1`). Provider choice from the input: Buffer → 122370001, otherwise Groq 122370000 |
+| **ModelCall** | `text` companyId, `text_1` provider, `text_2` model, `text_3` messages JSON, `text_4` temperature, `text_5` max tokens, `text_6` optional `extra` JSON merged into the request (tools, tool_choice, reasoning_effort) | Reads the company's Groq key, calls `https://api.groq.com/openai/v1/chat/completions`, returns `content`, `message` (full assistant message JSON, including tool_calls) and `error`. Responds after HTTP failures too |
+| **BufferCall** | `text` companyId, `text_1` GraphQL query, `text_2` variables JSON | Reads the company's Buffer token, POSTs to `https://api.buffer.com/graphql`, returns `content` (raw response JSON). Responds after HTTP failures too |
 
-Provider choice values observed in Power Apps:
+Changes to flows were made with scripts that back up the definition first
+(`scripts/dataverse/upgrade-modelcall.mjs`) or by hand in the designer.
 
-- Groq: `122370000`
-- Buffer: `122370001`
-- HF: `122370002`
+## Secrets
 
-The flow should use the actual Dataverse choice `Groq`, not a model name and not `Grok`. `Grok` is a different xAI product; the current endpoint is Groq.
+- Secrets live only in **Company Secrets** (`fc_companysecrets1`, entity set
+  `fc_companysecrets1s`), column `fc_accesstoken`, column security enabled.
+  One row per company and provider.
+- The app never reads secrets. It saves them through SaveCompanySecret and
+  uses them only through ModelCall and BufferCall.
+- Non-secret connection status is in **Company Integrations**
+  (`fc_companyintegration`): provider `buffer` 122370000 / `groq` 122370001,
+  status `connected` 122370000. The app uses it to show "Connecté" after a reload.
 
-### ModelCall trigger inputs
+## Data model
 
-The Power Apps (V2) trigger has six text inputs:
+Full design: `docs/ai-data-model.md`. Existing marketing tables (company,
+profile, membership, product, audience segment, key message, calendar item,
+library item, roadmap milestone, weekly report, content score) plus:
 
-| User-facing input | Generated internal name | Meaning | Secret? |
-|---|---|---|---|
-| `companyId` | `text` | Dataverse Company row GUID | No |
-| `provider` | `text_1` | Current value `Groq` | No |
-| `model` | `text_2` | Provider model identifier | No |
-| `messages` | `text_3` | JSON string containing chat messages | No, but may contain business data |
-| `temperature` | `text_4` | Numeric generation setting | No |
-| `maxTokens` | `text_5` | Maximum output token count | No |
+| Batch | Tables | Created by |
+|---|---|---|
+| 1 | `fc_source` choice, `fc_contact`, `fc_contactidentity`, `fc_activity` (Timeline Event), `fc_campaign`, `fc_campaignmetric`, `fc_aiinsight`, `fc_aiaction`; `fc_company.fc_currency`; campaign lookups on calendar and library items | `scripts/dataverse/create-core-tables.mjs` |
+| 1b | `fc_place` (seeded with Cameroon: country, 10 regions, main cities, Douala and Yaoundé neighbourhoods), `fc_zone`, `fc_zoneplace`; `fc_campaign.fc_zone`, `fc_contact.fc_place` | `scripts/dataverse/create-geo-tables.mjs` |
+| 2 (Odoo) | `fc_opportunity`, `fc_syncstate` | planned |
+| 3 (WhatsApp) | `fc_conversation`, `fc_message` | planned |
 
-Frontend production call in `src/lib/model.ts`:
+Rules: every table has a required `fc_company` lookup except `fc_place`
+(shared reference places have none); every cross-source link is optional;
+synced rows carry `fc_source` + `fc_externalid`; amounts are decimals with an
+ISO currency code copied from the company (default XAF).
 
-```ts
-ModelCallService.Run({
-  text: body.companyId,
-  text_1: 'Groq',
-  text_2: options.model ?? 'openai/gpt-oss-120b',
-  text_3: JSON.stringify(body.messages),
-  text_4: String(options.temperature ?? 0.7),
-  text_5: String(options.max_tokens ?? 2048),
-})
+Schema scripts share `scripts/dataverse/lib.mjs`, are idempotent, support
+`--dry-run`, and authenticate through the Azure CLI (`az login` as
+`tankeu.frank@africauniv.tech`; the scripts find `az` even when it is not on PATH).
+`scripts/dataverse/delete-unused-tables.mjs` removes leftover duplicate
+Company Secrets tables and placeholder tables when they are empty.
+
+## Frontend map
+
+| Area | Files |
+|---|---|
+| Dataverse access | `src/lib/dataverse.ts` (existing tables), `src/lib/campaigns.ts`, `src/lib/geo.ts`, generated services in `src/generated` (regenerate with `npx pa app add data-source` / `refresh data-source` / `add flow`) |
+| AI model calls | `src/lib/model.ts` (`callModel`, `callModelJSON`, `callModelWithTools`) |
+| Providers and settings | `src/lib/integrations.ts` (registry, `saveCompanySecret`, `ASSISTANT_MODEL`), `src/pages/Settings.tsx` |
+| Buffer | `src/lib/buffer.ts` (`bufferQuery`, `saveBufferToken`), `src/contexts/BufferContext.tsx` |
+| Campaigns | `src/pages/Campaigns.tsx` (list, editor, detail, Zones tab), `src/lib/campaignContext.ts` (shared campaign logic: prompt context, warnings, UTM tagging, `useCampaignOptions`) |
+| Assistant | `src/lib/assistant.ts` (tools, loop, snapshot, digest, inline tool-call recovery), `src/lib/assistantActions.ts` (propose/approve/reject), `src/components/assistant/` (panel, charts) |
+| Auth and company | `src/contexts/AuthContext.tsx`, `src/contexts/CompanyContext.tsx` |
+
+Assistant design: the model gets tools, not a data dump. The app runs every
+query filtered to the active company. Display tools (`show_chart`,
+`show_table`, `show_images`) and action tools (`propose_action`,
+`open_in_studio`) return blocks the panel renders. Proposals are stored as AI
+Actions with status `proposed` and run only when an owner, admin or editor
+approves them.
+
+## Content security policy (App (code) tab in the admin centre)
+
+`img-src` was customised to: `'self'`, `data:`, `blob:`,
+`https://buffer-channel-avatars-bucket.s3.amazonaws.com`,
+`https://res.cloudinary.com`. `connect-src` is still the default; direct
+browser uploads to `https://api.cloudinary.com` may need it extended; read the
+exact default list from the browser console error before changing it.
+
+## Deploy and verify
+
+```powershell
+npx tsc -b        # type-check
+npm test          # vitest
+npm run power:push
 ```
 
-### Secret retrieval and HTTP construction
+## Next steps
 
-The intended ModelCall sequence is:
+1. **Odoo CRM** (next feature): needs the Odoo version, hosting (Odoo Online
+   needs the Custom plan for API access; Odoo.sh or self-hosted also work) and
+   an API key. Plan: read-only scheduled sync of `crm.lead`, `res.partner`
+   and won orders into `fc_opportunity`, `fc_contact`, `fc_contactidentity`
+   and `fc_activity`, then assistant tools over the pipeline.
+2. **WhatsApp Business** (Cloud API): verified Meta Business account and a
+   dedicated number; webhook best hosted in the repo's `functions/` Azure
+   Functions project; 24-hour reply window; AI replies in draft mode by default.
+3. **Paid ads** later: zones already use the shape ad platforms accept
+   (named places plus a radius).
+4. **Team access**: give colleagues' security roles the new tables before
+   they use campaigns, zones or the assistant.
+5. **Claude** as a provider: add an Anthropic branch in ModelCall (different
+   request and tool format) and an Anthropic key; the app side is ready.
 
-1. Use `companyId` to find the Company Secrets row.
-2. Match the Provider choice to `Groq`.
-3. Read the secured `fc_accesstoken` value using the flow’s Dataverse connection.
-4. Build the HTTP header:
+## Known limitations
 
-```text
-Authorization: Bearer <value read from fc_accesstoken>
-```
-
-5. POST to the Groq-compatible chat-completions endpoint.
-
-The actual `<value read from fc_accesstoken>` is deliberately not present in this document. If the HTTP action later reports `401`, verify that the flow connection has read access to the secured Access Token column before replacing the key.
-
-### Secret locations checklist
-
-- Source of the secret: company owner’s API-key input in the app.
-- Save flow input: `SaveCompanySecret.text_2`.
-- Dataverse destination: `Company Secrets.fc_accesstoken` / `fc_AccessToken`.
-- Protection: Dataverse column security is enabled.
-- Model flow retrieval: `ModelCall` → `List rows 2` result → matching Company Secrets row.
-- HTTP use: Authorization Bearer header built from the retrieved token.
-- Frontend storage: production code should not persist the raw key in React profile data or browser storage.
-
-If a future handoff needs the key itself, the user must enter it directly into the appropriate secure Power Platform field or secret manager. It should never be placed in a repository Markdown file.
-
-## Provider/model design decision
-
-Keep the Dataverse column named `Provider`.
-
-Current choice:
-
-- `Groq`
-
-Future choices can include:
-
-- `OpenAI`
-- `Anthropic`
-
-Do not rename the provider choice to `Model`. The provider identifies the API service; the model identifies the model selected at runtime. To add another provider later, add a provider-specific branch with its endpoint, authentication header, request shape, response extraction, and secret lookup.
-
-## Useful files
-
-- `src/lib/model.ts` — production model-call client.
-- `src/contexts/AuthContext.tsx` — production API-key save call.
-- `src/lib/dataverse.ts` — Dataverse mappings and error handling.
-- `src/pages/Memory.tsx` — company memory form hydration.
-- `power.config.json` — code-app data-source and flow configuration.
-- `.power/schemas/logicflows/ModelCall.Schema.json` — generated ModelCall trigger/response schema.
-- `.power/schemas/logicflows/SaveCompanySecret.Schema.json` — generated secret-save trigger schema.
-
-## Do not repeat unnecessarily
-
-- Do not refill the company form just because the AI flow returns 502; the company save issue was a separate Short Description truncation issue.
-- Do not re-enter or share the API key until the `List rows 2` lookup succeeds.
-- Do not rename `Provider` to `Model`.
-- Do not treat browser console messages about the Microsoft Graph profile photo (`404`) or service worker cache as the cause of the AI failure. The relevant error is the Power Platform flow run.
-
-## Definition of done
-
-The migration is complete for the current Groq provider when:
-
-- Company data saves and reloads from Dataverse.
-- Company Secrets saves a row with the correct Company, Provider, Status, and secured Access Token.
-- ModelCall’s List rows, Filter array, Condition, HTTP, and Respond actions all succeed.
-- Dashboard/Workspace AI recommendations return content.
-- Errors shown in the frontend identify the failed stage instead of only showing `[object Object]` or a generic 502.
-
-Provider expansion is a later phase after the Groq path works end-to-end.
+- Organic posts cannot be geo-restricted; zones steer content and analysis.
+- Buffer app tokens may return posts without metrics; manual entry exists.
+- The weekly digest is written when someone first opens the assistant that
+  week, not by a scheduler.
+- Saved assistant conversations are stored per device.
+- Team invites were removed with Supabase; members are listed from Dataverse
+  but new members are added outside FlowCom for now.
