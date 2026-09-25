@@ -41,6 +41,11 @@ export const MODEL_PROVIDERS: ProviderOption[] = [
 
 export const DEFAULT_MODEL_PROVIDER = MODEL_PROVIDERS[0]
 
+// Model the assistant uses for multi-step tool calling. Chosen for reliable
+// tool use on the current provider; change it here (or add a provider branch
+// in the ModelCall flow, e.g. for Claude) to upgrade the assistant.
+export const ASSISTANT_MODEL = 'openai/gpt-oss-120b'
+
 export const INTEGRATIONS: IntegrationDefinition[] = [
   {
     id: 'model',

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
-  Sun, Moon, Building2, ChevronDown, Check, Menu, X, Users, Settings
+  Sun, Moon, Building2, ChevronDown, Check, Menu, X, Users, Settings, Sparkles
 } from 'lucide-react'
 import { useI18n } from '@/contexts/I18nContext'
 import { useTheme } from '@/contexts/ThemeContext'
@@ -11,9 +11,11 @@ import { cn } from '@/lib/utils'
 
 interface HeaderProps {
   onToggleMobileMenu?: () => void
+  onToggleAssistant?: () => void
+  assistantOpen?: boolean
 }
 
-export default function Header({ onToggleMobileMenu }: HeaderProps) {
+export default function Header({ onToggleMobileMenu, onToggleAssistant, assistantOpen }: HeaderProps) {
   const { t, lang, toggle: toggleLang } = useI18n()
   const navigate = useNavigate()
   const { pathname } = useLocation()
@@ -135,6 +137,21 @@ export default function Header({ onToggleMobileMenu }: HeaderProps) {
           title={theme === 'light' ? t('header.themeDark') : t('header.themeLight')}
         >
           {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+        </button>
+
+        {/* AI assistant */}
+        <button
+          onClick={onToggleAssistant}
+          className={cn(
+            'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors',
+            assistantOpen
+              ? 'bg-indigo-600 text-white'
+              : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40'
+          )}
+          title={lang === 'fr' ? 'Assistant FlowCom' : 'FlowCom assistant'}
+        >
+          <Sparkles className="w-4 h-4" />
+          <span className="hidden sm:inline">{lang === 'fr' ? 'Assistant' : 'Assistant'}</span>
         </button>
 
         {/* Settings */}

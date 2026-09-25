@@ -474,6 +474,11 @@ export default function StudioPage() {
   // Campaign the next publish belongs to (optional)
   const { campaigns, zoneLabel } = useCampaignOptions(activeCompany?.id)
   const [campaignId, setCampaignId] = useState(searchParams.get('campaign') ?? '')
+  // A draft handed over by the assistant (?text=...) fills the editor once.
+  useEffect(() => {
+    const draft = searchParams.get('text')
+    if (draft) setContent(draft)
+  }, [searchParams])  // eslint-disable-line react-hooks/exhaustive-deps
   const campaign = campaigns.find(c => c.id === campaignId)
   // Choosing a campaign selects the Buffer channels that match its channels.
   const chooseCampaign = (id: string) => {
