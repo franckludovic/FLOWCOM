@@ -9,10 +9,12 @@ import { useBuffer, bufferQuery } from '@/contexts/BufferContext'
 import { callModel, buildModelError } from '@/lib/model'
 import { buildAiContext } from '@/lib/aiContext'
 import { listDataverseLibraryItems, updateDataverseLibraryItem } from '@/lib/dataverse'
+import { recordPostPublished, setContentCampaign } from '@/lib/campaigns'
+import { addUtm, bufferChannelMatchesCampaign, buildCampaignContext, campaignWarnings, useCampaignOptions } from '@/lib/campaignContext'
 import {
   Send, Check, Loader2, AlertCircle, CheckSquare,
   Upload, X, Smile, Wand2, RotateCcw, Hash, Film, Briefcase, Layers, Search,
-  Play, Pause, Volume2, VolumeX, ShieldCheck, CalendarClock
+  Play, Pause, Volume2, VolumeX, ShieldCheck, CalendarClock, Megaphone
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { FallbackImage } from '@/components/FallbackImage'
@@ -468,6 +470,19 @@ export default function StudioPage() {
   const [beforeTone, setBeforeTone] = useState<string | null>(null)
 
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+
+  // Campaign the next publish belongs to (optional)
+  const { campaigns, zoneLabel } = useCampaignOptions(activeCompany?.id)
+  const [campaignId, setCampaignId] = useState(searchParams.get('campaign') ?? '')
+  const campaign = campaigns.find(c => c.id === campaignId)
+  // Choosing a campaign selects the Buffer channels that match its channels.
+  const chooseCampaign = (id: string) => {
+    setCampaignId(id)
+    const next = campaigns.find(c => c.id === id)
+    if (!next) return
+    const matching = channels.filter((ch: any) => bufferChannelMatchesCampaign(ch.service ?? '', next)).map((ch: any) => ch.id)
+    if (matching.length) setSelectedProfiles(matching)
+  }
   const [isPublishing, setIsPublishing]     = useState(false)
   const [publishSuccess, setPublishSuccess] = useState(false)
   const [libraryItems, setLibraryItems]     = useState<any[]>([])
@@ -605,7 +620,7 @@ export default function StudioPage() {
       const result = await callModel(activeCompany?.id ?? '', [
         {
           role: 'system',
-          content: `You are a social media publishing assistant doing a quick pre-flight check. Analyze this post and return ONLY a JSON object: {"issues_fr":["string"],"issues_en":["string"]} with 0–2 issues each (max 15 words per issue). issues_fr in French, issues_en in English. Flag ONLY real problems: missing CTA when the goal is conversion, text significantly over the ${charLimit}-char limit for ${preset}, tone clearly mismatched with the brand. If the post is fine, return {"issues_fr":[],"issues_en":[]}. Do not invent issues. Brand context:\n${ctx}`,
+          content: `You are a social media publishing assistant doing a quick pre-flight check. Analyze this post and return ONLY a JSON object: {"issues_fr":["string"],"issues_en":["string"]} with 0–2 issues each (max 15 words per issue). issues_fr in French, issues_en in English. Flag ONLY real problems: missing CTA when the goal is conversion, text significantly over the ${charLimit}-char limit for ${preset}, tone clearly mismatched with the brand. If the post is fine, return {"issues_fr":[],"issues_en":[]}. Do not invent issues. ${campaign ? `Also flag a clear mismatch with the campaign's key message, audience, objective or target zone. ` : ''}Brand context:\n${ctx}${campaign ? `\n\nCampaign:\n${buildCampaignContext(campaign, { segments, keyMessages, zoneLabel: zoneLabel(campaign) })}` : ''}`,
         },
         { role: 'user', content: `Post text (${fullText.length} chars):\n${fullText.slice(0, 600)}\n\nTarget channels: ${selectedServices}\nPreset: ${preset}` },
       ], { temperature: 0.1, max_tokens: 150 })
@@ -660,6 +675,8 @@ export default function StudioPage() {
           ? `schedulingType: customScheduled, mode: customScheduled, dueAt: "${new Date(scheduledAt).toISOString()}"`
           : `schedulingType: automatic, mode: shareNow`
 
+        // Tag links with the campaign's tracking code, per channel.
+        const text = campaign ? addUtm(fullText, campaign.tracking_code, service || 'social') : fullText
         return bufferQuery(activeCompany.id, `
           mutation CreatePost($text: String!, $channelId: ChannelId!) {
             createPost(input: { text: $text, channelId: $channelId,
@@ -668,10 +685,17 @@ export default function StudioPage() {
               ... on PostActionSuccess { post { id dueAt } }
               ... on MutationError { message }
             }
-          }`, { text: fullText, channelId })
+          }`, { text, channelId })
       }))
       const err = results.find(r => r?.createPost?.message)
       if (err) throw new Error(err.createPost.message)
+      // Record each post on the timeline (and its campaign) so results can be
+      // collected later. Never block a successful publish on this.
+      const postIds: string[] = results.map(r => r?.createPost?.post?.id).filter(Boolean)
+      await Promise.all([
+        ...postIds.map(postId => recordPostPublished(activeCompany.id, campaignId || null, postId, fullText)),
+        ...(campaignId && selectedItemId ? [setContentCampaign('library', selectedItemId, campaignId)] : []),
+      ]).catch(recordError => console.warn('Published, but could not record the post on the timeline', recordError))
       if (selectedItemId) {
         await updateDataverseLibraryItem(selectedItemId, { status: 'Published' })
         setLibraryItems(items => items.map(i => i.id === selectedItemId ? { ...i, status: 'Published' } : i))
@@ -978,6 +1002,24 @@ export default function StudioPage() {
 
         {/* ── Right: channels + publish- same height as left ── */}
         <div className="flex flex-col gap-3 w-60 shrink-0 min-h-0">
+          {campaigns.length > 0 && (
+            <label className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl px-4 py-3 shadow-sm flex flex-col gap-1.5 shrink-0">
+              <span className="flex items-center gap-1.5 text-xs font-bold text-[var(--color-text)]">
+                <Megaphone className="w-3.5 h-3.5 text-indigo-500" />{lang === 'fr' ? 'Campagne' : 'Campaign'}
+              </span>
+              <select value={campaignId} onChange={e => chooseCampaign(e.target.value)}
+                className="w-full px-2 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-alt)] text-[var(--color-text)] text-xs outline-none">
+                <option value="">{lang === 'fr' ? 'Aucune' : 'None'}</option>
+                {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              {campaign && campaignWarnings(campaign, lang === 'fr' ? 'fr' : 'en').map(w => (
+                <span key={w} className="flex items-start gap-1 text-[10px] text-amber-600 dark:text-amber-400"><AlertCircle className="w-3 h-3 shrink-0 mt-px" />{w}</span>
+              ))}
+              {campaign?.tracking_code && (
+                <span className="text-[10px] text-[var(--color-text-muted)]">{lang === 'fr' ? 'Liens suivis :' : 'Links tagged:'} <span className="font-mono">{campaign.tracking_code}</span></span>
+              )}
+            </label>
+          )}
           <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 shadow-sm flex flex-col flex-1 min-h-0">
             <p className="text-sm font-bold text-[var(--color-text)] mb-0.5 shrink-0">
               {lang === 'fr' ? 'Réseaux' : 'Channels'}

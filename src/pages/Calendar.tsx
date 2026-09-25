@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   CalendarDays, Sparkles, Trash2, ChevronLeft, ChevronRight, ChevronDown,
   LayoutList, LayoutGrid, Zap, AlertCircle, FileText, Clapperboard, Image,
-  Wand2, Loader2
+  Wand2, Loader2, Megaphone
 } from 'lucide-react'
 import {
   FaLinkedinIn, FaInstagram, FaTiktok, FaFacebookF,
@@ -15,7 +15,10 @@ import { useAuth } from '@/contexts/AuthContext'
 import { callModelJSON, buildModelError } from '@/lib/model'
 import { buildAiContext } from '@/lib/aiContext'
 import { cn } from '@/lib/utils'
+import { setContentCampaign } from '@/lib/campaigns'
+import { buildCampaignContext, campaignWarnings, CONTENT_CHANNEL, useCampaignOptions } from '@/lib/campaignContext'
 import {
+  createDataverseCalendarItem,
   deleteDataverseCalendarItem,
   listDataverseCalendarItems,
   replaceDataverseCalendarMonth,
@@ -31,6 +34,7 @@ interface CalendarItem {
   format: 'Post' | 'Carousel' | 'Video' | 'Story'
   channel: string
   status: 'idea' | 'scheduled' | 'published'
+  campaign_id?: string | null
 }
 
 // ─── Channel config ────────────────────────────────────────────
@@ -163,6 +167,17 @@ export default function CalendarPage() {
   const [customFreq, setCustomFreq] = useState('')
   const [isCustomFreq, setIsCustomFreq] = useState(false)
 
+  // Optional campaign: generation follows it and the ideas are linked to it.
+  const { campaigns, zoneLabel } = useCampaignOptions(activeCompany?.id)
+  const [campaignId, setCampaignId] = useState('')
+  const campaign = campaigns.find(c => c.id === campaignId)
+  const chooseCampaign = (id: string) => {
+    setCampaignId(id)
+    const next = campaigns.find(c => c.id === id)
+    const mapped = next?.channels.map(ch => CONTENT_CHANNEL[ch]).filter((v): v is string => Boolean(v)) ?? []
+    if (mapped.length) setChannels(mapped)
+  }
+
   const [view, setView]       = useState<'list' | 'grid'>('list')
   const [items, setItems]     = useState<CalendarItem[]>(() => {
     return []
@@ -223,13 +238,13 @@ export default function CalendarPage() {
     const systemMsg = `You are an expert social media strategist. Create a monthly editorial calendar.
 Return ONLY valid JSON matching this exact schema:
 {"items":[{"date":"YYYY-MM-DD","topic":"string","goal":"string","format":"Post|Carousel|Video|Story","channel":"${channelEnum}"}]}
-Brand context:\n${buildContext()}`
+Brand context:\n${buildContext()}${campaign ? `\n\nEvery idea belongs to the campaign below: serve its objective, target its audience, carry its key message, follow its brief and adapt to its target zone.\n${buildCampaignContext(campaign, { segments, keyMessages, zoneLabel: zoneLabel(campaign) })}` : ''}`
 
     const userMsg = `Create ${totalPosts} post ideas distributed across these channels: ${channelLabels} in ${mLabel}.
 Goals to target: ${goalLabels}.
 ${theme.trim() ? `CRITICAL: The overarching theme for this month is "${theme.trim()}". All topics MUST strongly align with this theme.` : ''}
 Spread evenly across the month, vary the formats.
-The date must be within month ${month + 1} of year ${year}.
+The date must be within month ${month + 1} of year ${year}.${campaign && (campaign.start_date || campaign.end_date) ? ` Dates must also fall between ${campaign.start_date || 'the start of the month'} and ${campaign.end_date || 'the end of the month'} (the campaign period).` : ''}
 Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
 
     try {
@@ -249,15 +264,26 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
         channel: channels.includes(item.channel?.toLowerCase()) ? item.channel.toLowerCase() : channels[0],
         status: 'idea',
       }))
-      const savedItems = await replaceDataverseCalendarMonth(activeCompany.id, mk, newItems.map(item => ({
+      const payload = newItems.map(item => ({
         date: item.date,
         topic: item.topic,
         goal: item.goal,
         format: item.format,
         channel: item.channel,
         status: item.status,
-      })))
-      setItems(prev => [...prev.filter(i => !i.date.startsWith(mk)), ...savedItems])
+      }))
+      if (campaign) {
+        // Campaign ideas are added to the month (only within the campaign's dates)
+        // and linked to it; the month's other posts are left untouched.
+        const inPeriod = payload.filter(item =>
+          (!campaign.start_date || item.date >= campaign.start_date) && (!campaign.end_date || item.date <= campaign.end_date))
+        const created = await Promise.all(inPeriod.map(item => createDataverseCalendarItem(activeCompany.id, item)))
+        await Promise.all(created.map(item => setContentCampaign('calendar', item.id, campaign.id)))
+        setItems(prev => [...prev, ...created.map(item => ({ ...item, campaign_id: campaign.id }))])
+      } else {
+        const savedItems = await replaceDataverseCalendarMonth(activeCompany.id, mk, payload)
+        setItems(prev => [...prev.filter(i => !i.date.startsWith(mk)), ...savedItems])
+      }
     } catch (e) {
       setError(t(buildModelError(e) as Parameters<typeof t>[0]))
     } finally {
@@ -286,7 +312,7 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
     setItems(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i))
   }
   const goGenerate  = (item: CalendarItem) => {
-    navigate(`/content?${new URLSearchParams({ topic: item.topic, channel: item.channel, goal: item.goal, format: item.format }).toString()}`)
+    navigate(`/content?${new URLSearchParams({ topic: item.topic, channel: item.channel, goal: item.goal, format: item.format, ...(item.campaign_id ? { campaign: item.campaign_id } : {}) }).toString()}`)
   }
 
   // ── AI gap analysis - fires when monthItems changes and has ≥3 items ───────
@@ -523,6 +549,30 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
               )}
             </div>
           </div>
+
+          {/* Campaign */}
+          {campaigns.length > 0 && (
+            <div className="space-y-2 md:col-span-2">
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text)]">
+                <Megaphone className="w-3.5 h-3.5 text-indigo-500" />{lang === 'fr' ? 'Campagne (optionnel)' : 'Campaign (optional)'}
+              </label>
+              <select value={campaignId} onChange={e => chooseCampaign(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)] text-sm text-[var(--color-text)] outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="">{lang === 'fr' ? 'Sans campagne (plan du mois complet)' : 'No campaign (full month plan)'}</option>
+                {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              {campaign && (
+                <p className="text-[11px] text-[var(--color-text-muted)]">
+                  {lang === 'fr'
+                    ? 'Les idées suivent la campagne, restent dans ses dates, et sont ajoutées au mois sans effacer les autres posts.'
+                    : "Ideas follow the campaign, stay within its dates, and are added to the month without removing other posts."}
+                </p>
+              )}
+              {campaign && campaignWarnings(campaign, lang === 'fr' ? 'fr' : 'en').map(w => (
+                <p key={w} className="flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400"><AlertCircle className="w-3 h-3" />{w}</p>
+              ))}
+            </div>
+          )}
 
           {/* Theme of the month */}
           <div className="space-y-2 md:col-span-2">

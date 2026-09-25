@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   FileText, Sparkles, Save, Check, Copy,
-  AlertCircle, RefreshCw, Camera, X, ChevronDown, StickyNote, Wand2, Loader2,
+  AlertCircle, RefreshCw, Camera, X, ChevronDown, StickyNote, Wand2, Loader2, Megaphone,
 } from 'lucide-react'
 import {
   FaLinkedinIn, FaInstagram, FaTiktok, FaFacebookF,
@@ -14,6 +14,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import { callModelJSON, buildModelError } from '@/lib/model'
 import { buildAiContext } from '@/lib/aiContext'
 import { createDataverseLibraryItem } from '@/lib/dataverse'
+import { setContentCampaign } from '@/lib/campaigns'
+import { buildCampaignContext, campaignWarnings, CONTENT_CHANNEL, useCampaignOptions } from '@/lib/campaignContext'
 import { cn } from '@/lib/utils'
 
 // ─── Types ─────────────────────────────────────────────────────
@@ -116,6 +118,9 @@ export default function ContentGeneratorPage() {
   const { activeCompany, products, segments, keyMessages } = useCompany()
   const { apiKeyConfigured } = useAuth()
   const [searchParams] = useSearchParams()
+  const { campaigns, zoneLabel } = useCampaignOptions(activeCompany?.id)
+  const [campaignId, setCampaignId] = useState(searchParams.get('campaign') ?? '')
+  const campaign = campaigns.find(c => c.id === campaignId)
 
   // Initial load from localStorage
   const loadDraft = () => {
@@ -157,7 +162,9 @@ export default function ContentGeneratorPage() {
   // Override from URL if coming from Calendar
   useEffect(() => {
     const tp = searchParams.get('topic'); const ch = searchParams.get('channel'); const gl = searchParams.get('goal'); const fm = searchParams.get('format')
-    if (tp || ch || gl || fm) {
+    const cp = searchParams.get('campaign')
+    if (cp) setCampaignId(cp)
+    if (tp || ch || gl || fm || cp) {
       if (tp) setTopic(tp); if (ch && CHANNEL_MAP[ch]) setChannel(ch); if (gl) setCalendarGoal(gl)
       if (fm && ['Post', 'Carousel', 'Video', 'Story'].includes(fm)) setContentType(fm as any)
       setPost(null) // Reset generated output for new topic
@@ -192,7 +199,7 @@ export default function ContentGeneratorPage() {
 
     const sys = `You are an expert social media copywriter for ${channelLabel}. Return ONLY valid JSON:
 {"content":"string","visualIdea":"string"}
-Brand context:\n${buildContext()}`
+Brand context:\n${buildContext()}${campaign ? `\n\nThis post belongs to the campaign below. Serve its objective, speak to its target audience, carry its key message, follow its brief, and adapt references to its target zone:\n${buildCampaignContext(campaign, { segments, keyMessages, zoneLabel: zoneLabel(campaign) })}` : ''}`
 
     const usr = `Create a complete ${channelLabel} content piece.
 Format: ${contentType}
@@ -229,7 +236,8 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
       tone, status: 'Draft', publish_date: null,
     } as const
     try {
-      await createDataverseLibraryItem(activeCompany.id, draft)
+      const savedItem = await createDataverseLibraryItem(activeCompany.id, draft)
+      if (campaign) await setContentCampaign('library', savedItem.id, campaign.id)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Unable to save content')
       return
@@ -317,6 +325,32 @@ Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
 
       {/* ── Config panel ── */}
       <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5 shrink-0 space-y-4">
+
+        {/* Campaign */}
+        {campaigns.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Megaphone className="w-4 h-4 text-indigo-500 shrink-0" />
+            <select value={campaignId}
+              onChange={e => {
+                setCampaignId(e.target.value)
+                const next = campaigns.find(c => c.id === e.target.value)
+                const allowed = next?.channels.map(ch => CONTENT_CHANNEL[ch]).filter((v): v is string => Boolean(v)) ?? []
+                if (allowed.length && !allowed.includes(channel)) setChannel(allowed[0])
+              }}
+              className="px-2.5 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-alt)] text-xs font-medium text-[var(--color-text)] outline-none">
+              <option value="">{lang === 'fr' ? 'Sans campagne' : 'No campaign'}</option>
+              {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            {campaign && (
+              <span className="text-[11px] text-[var(--color-text-muted)]">
+                {lang === 'fr' ? "La génération suit le brief, l'audience, le message clé et la zone de la campagne. Le post enregistré y sera lié." : 'Generation follows the campaign brief, audience, key message and zone. The saved post will be linked to it.'}
+              </span>
+            )}
+            {campaign && campaignWarnings(campaign, lang === 'fr' ? 'fr' : 'en').map(w => (
+              <span key={w} className="flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400"><AlertCircle className="w-3 h-3" />{w}</span>
+            ))}
+          </div>
+        )}
 
         {/* Calendar banner */}
         {calendarGoal && (
