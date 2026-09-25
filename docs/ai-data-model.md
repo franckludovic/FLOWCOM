@@ -37,6 +37,7 @@ The AI does not receive all data on every request. It calls **tools**
 | Batch | Tables | Status |
 |---|---|---|
 | 1 | `fc_source` choice, `fc_contact`, `fc_contactidentity`, `fc_activity`, `fc_campaign`, `fc_campaignmetric`, `fc_aiinsight`, `fc_aiaction`, plus `fc_company.fc_currency` and `fc_campaign` lookups on calendar and library items | script: `scripts/dataverse/create-core-tables.mjs` |
+| 1b | `fc_place` (+ Cameroon seed), `fc_zone`, `fc_zoneplace`, `fc_campaign.fc_zone`, `fc_contact.fc_place` | script: `scripts/dataverse/create-geo-tables.mjs` |
 | 2 (Odoo) | `fc_opportunity`, `fc_syncstate`; opportunity lookups on `fc_activity` and `fc_aiinsight`; alternate key on `fc_activity` (`fc_company`, `fc_source`, `fc_externalid`) | with the Odoo feature |
 | 3 (WhatsApp) | `fc_conversation`, `fc_message`; conversation lookups on `fc_activity` and `fc_aiinsight` | with the WhatsApp feature |
 
@@ -160,6 +161,46 @@ Alternate key (`fc_campaign`, `fc_date`, `fc_channel`, `fc_source`).
 - `fc_company`: add `fc_currency` (string 3, default `XAF`, editable in company settings).
 - `fc_calendaritem`: add `fc_campaign` lookup.
 - `fc_libraryitem`: add `fc_campaign` lookup.
+
+## 2b. Geography (campaign targeting)
+
+Zones are built from a place hierarchy: country → region → city → neighbourhood.
+
+### fc_place
+
+| Column | Type | Notes |
+|---|---|---|
+| fc_name | string 200 | primary name, e.g. "Akwa" |
+| fc_code | string 100 | unique code (`CM`, `CM-LT`, `CM-LT-DOUALA`, `CM-LT-DOUALA-AKWA`); alternate key |
+| fc_level | choice | `country`, `region`, `city`, `neighbourhood` |
+| fc_parent | lookup → fc_place | |
+| fc_latitude / fc_longitude | decimal (6) | approximate centre; used as a radius centre |
+| fc_company | lookup → fc_company | **optional**: empty for shared reference places, set for places a company adds |
+
+`fc_place` is the one table where `fc_company` is optional: seeded Cameroon
+places (country, 10 regions, main cities, main Douala and Yaoundé
+neighbourhoods) are shared reference data.
+
+### fc_zone
+
+| Column | Type | Notes |
+|---|---|---|
+| fc_company | lookup | required |
+| fc_name | string 200 | e.g. "Douala Centre" |
+| fc_description | multiline 2000 | |
+| fc_center + fc_radiuskm | lookup → fc_place + decimal (1) | optional: "Douala + 30 km" |
+
+### fc_zoneplace
+
+Places included in a zone: `fc_company`, `fc_zone`, `fc_place`; alternate key (`fc_zone`, `fc_place`).
+
+A zone is the union of its places plus the optional radius. This matches what
+ad platforms accept later (named locations and a radius around a point).
+
+### Links
+
+- `fc_campaign.fc_zone`: the campaign's target zone.
+- `fc_contact.fc_place`: the most specific place known for a contact.
 
 ## 3. Odoo CRM (feature 2)
 

@@ -66,6 +66,7 @@ export interface Fc_campaignsBase {
   fc_targetrevenue?: number;
   fc_trackingcode?: string;
   fc_type?: Fc_campaignsfc_type;
+  "fc_Zone@odata.bind"?: string;
   importsequencenumber?: number;
   overriddencreatedon?: string;
   statecode: Fc_campaignsstatecode;
@@ -95,6 +96,8 @@ export interface Fc_campaigns extends Fc_campaignsBase {
   _fc_keymessage_value?: string;
   fc_segment?: object;
   _fc_segment_value?: string;
+  fc_zone?: object;
+  _fc_zone_value?: string;
   modifiedby?: object;
   _modifiedby_value?: string;
   modifiedonbehalfby?: object;

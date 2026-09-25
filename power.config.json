@@ -145,6 +145,21 @@
           "entitySetName": "fc_aiactions",
           "logicalName": "fc_aiaction",
           "isHidden": false
+        },
+        "places": {
+          "entitySetName": "fc_places",
+          "logicalName": "fc_place",
+          "isHidden": false
+        },
+        "zones": {
+          "entitySetName": "fc_zones",
+          "logicalName": "fc_zone",
+          "isHidden": false
+        },
+        "zoneplaces": {
+          "entitySetName": "fc_zoneplaces",
+          "logicalName": "fc_zoneplace",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

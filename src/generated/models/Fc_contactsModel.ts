@@ -49,6 +49,7 @@ export interface Fc_contactsBase {
   fc_name?: string;
   "fc_Organization@odata.bind"?: string;
   fc_phone?: string;
+  "fc_Place@odata.bind"?: string;
   "fc_Segment@odata.bind"?: string;
   fc_summary?: string;
   fc_whatsappconsent?: boolean;
@@ -80,6 +81,8 @@ export interface Fc_contacts extends Fc_contactsBase {
   _fc_company_value?: string;
   fc_organization?: object;
   _fc_organization_value?: string;
+  fc_place?: object;
+  _fc_place_value?: string;
   fc_segment?: object;
   _fc_segment_value?: string;
   modifiedby?: object;

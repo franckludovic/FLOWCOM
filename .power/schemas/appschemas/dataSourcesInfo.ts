@@ -157,6 +157,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "fc_places": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "fc_placeid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "fc_products": {
     "tableId": "",
     "version": "",
@@ -175,6 +182,20 @@ export const dataSourcesInfo = {
     "tableId": "",
     "version": "",
     "primaryKey": "fc_weeklyreportid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "fc_zoneplaces": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "fc_zoneplaceid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "fc_zones": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "fc_zoneid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },

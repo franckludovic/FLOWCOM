@@ -1,13 +1,13 @@
 {
-  "name": "fc_contact",
-  "title": "Contacts",
+  "name": "fc_zoneplace",
+  "title": "Zone Places",
   "schema": {
     "type": "array",
     "items": {
       "type": "object",
       "x-ms-dataverse-entity": true,
-      "x-ms-dataverse-entityset": "fc_contacts",
-      "x-ms-dataverse-primary-id": "fc_contactid",
+      "x-ms-dataverse-entityset": "fc_zoneplaces",
+      "x-ms-dataverse-primary-id": "fc_zoneplaceid",
       "x-ms-dataverse-primary-name": "fc_name",
       "properties": {
         "createdby": {
@@ -82,14 +82,6 @@
           "required": true,
           "maxLength": 100
         },
-        "fc_city": {
-          "type": "string",
-          "title": "City",
-          "x-ms-dataverse-attribute": "fc_city",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_City",
-          "maxLength": 100
-        },
         "fc_company": {
           "type": "string",
           "title": "Company",
@@ -111,159 +103,6 @@
           "x-ms-read-only": true,
           "maxLength": 850
         },
-        "fc_contactid": {
-          "type": "string",
-          "title": "Contact",
-          "x-ms-dataverse-attribute": "fc_contactid",
-          "x-ms-dataverse-type": "UniqueidentifierType",
-          "x-ms-schema-name": "fc_ContactId",
-          "x-ms-dataverse-primary-id": true,
-          "required": true,
-          "x-ms-keyType": "primary"
-        },
-        "fc_country": {
-          "type": "string",
-          "title": "Country",
-          "x-ms-dataverse-attribute": "fc_country",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_Country",
-          "maxLength": 100
-        },
-        "fc_email": {
-          "type": "string",
-          "title": "Email",
-          "x-ms-dataverse-attribute": "fc_email",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_Email",
-          "maxLength": 320
-        },
-        "fc_firstsource": {
-          "type": "string",
-          "title": "First source",
-          "x-ms-dataverse-attribute": "fc_firstsource",
-          "x-ms-dataverse-type": "PicklistType",
-          "x-ms-schema-name": "fc_Firstsource",
-          "enum": [
-            "manual",
-            "flowcom",
-            "buffer",
-            "odoo",
-            "whatsapp",
-            "meta_ads",
-            "google_ads",
-            "linkedin_ads"
-          ],
-          "x-ms-enum-values": [
-            122370000,
-            122370001,
-            122370002,
-            122370003,
-            122370004,
-            122370005,
-            122370006,
-            122370007
-          ],
-          "Color": [
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null
-          ],
-          "x-ms-optionsetmetadataid": "5208cfa5-e7b8-f111-aaae-70a8a5114222",
-          "x-ms-isGlobal": true,
-          "x-ms-optionsetdisplayname": "Source",
-          "x-ms-optionSetType": "Picklist"
-        },
-        "fc_firstsourcename": {
-          "type": "string",
-          "title": "fc_firstsourcename",
-          "x-ms-dataverse-attribute": "fc_firstsourcename",
-          "x-ms-dataverse-type": "VirtualType",
-          "x-ms-schema-name": "fc_firstsourceName",
-          "x-ms-dataverse-attribute-of": "fc_firstsource",
-          "x-ms-read-only": true
-        },
-        "fc_kind": {
-          "type": "string",
-          "title": "Kind",
-          "x-ms-dataverse-attribute": "fc_kind",
-          "x-ms-dataverse-type": "PicklistType",
-          "x-ms-schema-name": "fc_Kind",
-          "enum": [
-            "person",
-            "organization"
-          ],
-          "x-ms-enum-values": [
-            122370000,
-            122370001
-          ],
-          "Color": [
-            null,
-            null
-          ],
-          "x-ms-optionsetmetadataid": "5bfb2a1c-e8b8-f111-aaae-70a8a5114222",
-          "x-ms-isGlobal": false,
-          "x-ms-optionsetdisplayname": "Kind",
-          "x-ms-optionSetType": "Picklist"
-        },
-        "fc_kindname": {
-          "type": "string",
-          "title": "fc_kindname",
-          "x-ms-dataverse-attribute": "fc_kindname",
-          "x-ms-dataverse-type": "VirtualType",
-          "x-ms-schema-name": "fc_kindName",
-          "x-ms-dataverse-attribute-of": "fc_kind",
-          "x-ms-read-only": true
-        },
-        "fc_lastactivityon": {
-          "type": "string",
-          "title": "Last activity on",
-          "x-ms-dataverse-attribute": "fc_lastactivityon",
-          "x-ms-dataverse-type": "DateTimeType",
-          "x-ms-schema-name": "fc_Lastactivityon"
-        },
-        "fc_lifecyclestage": {
-          "type": "string",
-          "title": "Lifecycle stage",
-          "x-ms-dataverse-attribute": "fc_lifecyclestage",
-          "x-ms-dataverse-type": "PicklistType",
-          "x-ms-schema-name": "fc_Lifecyclestage",
-          "enum": [
-            "lead",
-            "prospect",
-            "customer",
-            "inactive"
-          ],
-          "x-ms-enum-values": [
-            122370000,
-            122370001,
-            122370002,
-            122370003
-          ],
-          "Color": [
-            null,
-            null,
-            null,
-            null
-          ],
-          "x-ms-optionsetmetadataid": "899d132c-e8b8-f111-aaae-70a8a5114222",
-          "x-ms-isGlobal": false,
-          "x-ms-optionsetdisplayname": "Lifecycle stage",
-          "x-ms-optionSetType": "Picklist"
-        },
-        "fc_lifecyclestagename": {
-          "type": "string",
-          "title": "fc_lifecyclestagename",
-          "x-ms-dataverse-attribute": "fc_lifecyclestagename",
-          "x-ms-dataverse-type": "VirtualType",
-          "x-ms-schema-name": "fc_lifecyclestageName",
-          "x-ms-dataverse-attribute-of": "fc_lifecyclestage",
-          "x-ms-read-only": true
-        },
         "fc_name": {
           "type": "string",
           "title": "Name",
@@ -273,34 +112,6 @@
           "x-ms-dataverse-primary-name": true,
           "maxLength": 200
         },
-        "fc_organization": {
-          "type": "string",
-          "title": "Organization",
-          "x-ms-dataverse-attribute": "fc_organization",
-          "x-ms-dataverse-type": "LookupType",
-          "x-ms-schema-name": "fc_Organization",
-          "x-ms-dataverse-navigation-properties": [
-            "fc_Organization"
-          ]
-        },
-        "fc_organizationname": {
-          "type": "string",
-          "title": "fc_organizationname",
-          "x-ms-dataverse-attribute": "fc_organizationname",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_OrganizationName",
-          "x-ms-dataverse-attribute-of": "fc_organization",
-          "x-ms-read-only": true,
-          "maxLength": 200
-        },
-        "fc_phone": {
-          "type": "string",
-          "title": "Phone (E.164)",
-          "x-ms-dataverse-attribute": "fc_phone",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_Phone",
-          "maxLength": 30
-        },
         "fc_place": {
           "type": "string",
           "title": "Place",
@@ -309,7 +120,8 @@
           "x-ms-schema-name": "fc_Place",
           "x-ms-dataverse-navigation-properties": [
             "fc_Place"
-          ]
+          ],
+          "required": true
         },
         "fc_placename": {
           "type": "string",
@@ -321,72 +133,36 @@
           "x-ms-read-only": true,
           "maxLength": 200
         },
-        "fc_segment": {
+        "fc_zone": {
           "type": "string",
-          "title": "Audience segment",
-          "x-ms-dataverse-attribute": "fc_segment",
+          "title": "Zone",
+          "x-ms-dataverse-attribute": "fc_zone",
           "x-ms-dataverse-type": "LookupType",
-          "x-ms-schema-name": "fc_Segment",
+          "x-ms-schema-name": "fc_Zone",
           "x-ms-dataverse-navigation-properties": [
-            "fc_Segment"
-          ]
+            "fc_Zone"
+          ],
+          "required": true
         },
-        "fc_segmentname": {
+        "fc_zonename": {
           "type": "string",
-          "title": "fc_segmentname",
-          "x-ms-dataverse-attribute": "fc_segmentname",
+          "title": "fc_zonename",
+          "x-ms-dataverse-attribute": "fc_zonename",
           "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "fc_SegmentName",
-          "x-ms-dataverse-attribute-of": "fc_segment",
+          "x-ms-schema-name": "fc_ZoneName",
+          "x-ms-dataverse-attribute-of": "fc_zone",
           "x-ms-read-only": true,
-          "maxLength": 850
+          "maxLength": 200
         },
-        "fc_summary": {
+        "fc_zoneplaceid": {
           "type": "string",
-          "title": "Summary",
-          "x-ms-dataverse-attribute": "fc_summary",
-          "x-ms-dataverse-type": "MemoType",
-          "x-ms-schema-name": "fc_Summary",
-          "maxLength": 2000
-        },
-        "fc_whatsappconsent": {
-          "type": "string",
-          "title": "WhatsApp consent",
-          "x-ms-dataverse-attribute": "fc_whatsappconsent",
-          "x-ms-dataverse-type": "BooleanType",
-          "x-ms-schema-name": "fc_Whatsappconsent",
-          "enum": [
-            "No",
-            "Yes"
-          ],
-          "x-ms-enum-values": [
-            0,
-            1
-          ],
-          "Color": [
-            null,
-            null
-          ],
-          "x-ms-optionsetmetadataid": "909d132c-e8b8-f111-aaae-70a8a5114222",
-          "x-ms-isGlobal": false,
-          "x-ms-optionsetdisplayname": "WhatsApp consent",
-          "x-ms-optionSetType": "Boolean"
-        },
-        "fc_whatsappconsentname": {
-          "type": "string",
-          "title": "fc_whatsappconsentname",
-          "x-ms-dataverse-attribute": "fc_whatsappconsentname",
-          "x-ms-dataverse-type": "VirtualType",
-          "x-ms-schema-name": "fc_whatsappconsentName",
-          "x-ms-dataverse-attribute-of": "fc_whatsappconsent",
-          "x-ms-read-only": true
-        },
-        "fc_whatsappconsenton": {
-          "type": "string",
-          "title": "WhatsApp consent on",
-          "x-ms-dataverse-attribute": "fc_whatsappconsenton",
-          "x-ms-dataverse-type": "DateTimeType",
-          "x-ms-schema-name": "fc_Whatsappconsenton"
+          "title": "Zone Place",
+          "x-ms-dataverse-attribute": "fc_zoneplaceid",
+          "x-ms-dataverse-type": "UniqueidentifierType",
+          "x-ms-schema-name": "fc_ZoneplaceId",
+          "x-ms-dataverse-primary-id": true,
+          "required": true,
+          "x-ms-keyType": "primary"
         },
         "importsequencenumber": {
           "type": "string",
@@ -576,7 +352,7 @@
             null,
             null
           ],
-          "x-ms-optionsetmetadataid": "0dede1ab-e7b8-f111-aaae-70a8a5114222",
+          "x-ms-optionsetmetadataid": "34fd0303-f9b8-f111-aaae-70a8a5114222",
           "x-ms-isGlobal": false,
           "x-ms-optionsetdisplayname": "Status",
           "x-ms-optionSetType": "State"
@@ -608,7 +384,7 @@
             null,
             null
           ],
-          "x-ms-optionsetmetadataid": "17ede1ab-e7b8-f111-aaae-70a8a5114222",
+          "x-ms-optionsetmetadataid": "3efd0303-f9b8-f111-aaae-70a8a5114222",
           "x-ms-isGlobal": false,
           "x-ms-optionsetdisplayname": "Status Reason",
           "x-ms-optionSetType": "Status"
@@ -649,7 +425,9 @@
         "createdbyyominame",
         "createdonbehalfbyyominame",
         "fc_company",
-        "fc_contactid",
+        "fc_place",
+        "fc_zone",
+        "fc_zoneplaceid",
         "modifiedbyyominame",
         "modifiedonbehalfbyyominame",
         "ownerid",

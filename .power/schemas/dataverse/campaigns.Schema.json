@@ -403,6 +403,26 @@
           "x-ms-dataverse-attribute-of": "fc_type",
           "x-ms-read-only": true
         },
+        "fc_zone": {
+          "type": "string",
+          "title": "Target zone",
+          "x-ms-dataverse-attribute": "fc_zone",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "fc_Zone",
+          "x-ms-dataverse-navigation-properties": [
+            "fc_Zone"
+          ]
+        },
+        "fc_zonename": {
+          "type": "string",
+          "title": "fc_zonename",
+          "x-ms-dataverse-attribute": "fc_zonename",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "fc_ZoneName",
+          "x-ms-dataverse-attribute-of": "fc_zone",
+          "x-ms-read-only": true,
+          "maxLength": 200
+        },
         "importsequencenumber": {
           "type": "string",
           "title": "Import Sequence Number",
