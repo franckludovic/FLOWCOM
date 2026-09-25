@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { ModelCallService } from '@/generated/services/ModelCallService'
+import { DEFAULT_MODEL_PROVIDER } from './integrations'
 
 export type ModelMessage = {
   role: 'system' | 'user' | 'assistant'
@@ -59,7 +60,7 @@ async function invokeModel(body: { companyId: string; messages: ModelMessage[]; 
     const options = body.options ?? {}
     const request = ModelCallService.Run({
       text: body.companyId,
-      text_1: 'Groq',
+      text_1: DEFAULT_MODEL_PROVIDER.secretName,
       text_2: options.model ?? 'openai/gpt-oss-120b',
       text_3: JSON.stringify(body.messages),
       text_4: String(options.temperature ?? 0.7),

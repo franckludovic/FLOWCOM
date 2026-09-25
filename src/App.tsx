@@ -18,6 +18,7 @@ import RoadmapPage from '@/pages/Roadmap'
 import ReportPage from '@/pages/Report'
 import StudioPage from '@/pages/Studio'
 import PublishingHistoryPage from '@/pages/PublishingHistory'
+import SettingsPage from '@/pages/Settings'
 
 export default function App() {
   return (
@@ -42,6 +43,7 @@ export default function App() {
                       <Route path="/roadmap"            element={<RoadmapPage />} />
                       <Route path="/report"             element={<ReportPage />} />
                       <Route path="/publishing-history" element={<PublishingHistoryPage />} />
+                      <Route path="/settings"           element={<SettingsPage />} />
                     </Route>
                   </Route>
                   <Route path="*" element={<Navigate to="/workspace" replace />} />

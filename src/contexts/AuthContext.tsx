@@ -6,7 +6,8 @@ import { getContext } from '@microsoft/power-apps/app'
 import { supabase } from '@/lib/supabase'
 import type { Session } from '@supabase/supabase-js'
 import type { Profile } from '@/types'
-import { getOrCreateDataverseProfile, updateDataverseProfile } from '@/lib/dataverse'
+import { getOrCreateDataverseProfile, isIntegrationConnected, markIntegrationConnected, updateDataverseProfile } from '@/lib/dataverse'
+import { DEFAULT_MODEL_PROVIDER, MODEL_PROVIDERS, type ProviderOption } from '@/lib/integrations'
 import { SaveCompanySecretService } from '@/generated/services/SaveCompanySecretService'
 
 export interface AppUser {
@@ -25,7 +26,8 @@ interface AuthContextValue {
   signUp: (name: string, email: string, password: string) => Promise<string | null>
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
-  updateApiKey: (key: string, companyId?: string) => Promise<void>
+  updateApiKey: (key: string, companyId?: string, provider?: ProviderOption) => Promise<void>
+  refreshApiKeyStatus: (companyId: string | null) => Promise<void>
   updateProfile: (updates: Partial<Profile>) => Promise<void>
 }
 
@@ -132,7 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (session) await supabase.auth.signOut()
   }
 
-  const updateApiKey = async (key: string, companyId?: string) => {
+  const updateApiKey = async (key: string, companyId?: string, provider: ProviderOption = DEFAULT_MODEL_PROVIDER) => {
     if (!user) return
 
     if (!import.meta.env.DEV) {
@@ -142,7 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const result = await SaveCompanySecretService.Run({
         text: companyId,
-        text_1: 'Groq',
+        text_1: provider.secretName,
         text_2: key,
       })
       if (!result.success) {
@@ -152,6 +154,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             ? String(result.error)
             : 'Unable to save company AI key'
         throw new Error(message)
+      }
+      // Record non-secret status so the key is recognised after a reload.
+      // The secret is already saved, so a failure here must not fail the save.
+      try {
+        await markIntegrationConnected(companyId, provider.id, provider.label)
+      } catch (err) {
+        console.warn('Saved the AI key but could not record its status', err)
       }
     } else {
       if (!session) throw new Error('AI integrations must be connected through the Power Platform backend.')
@@ -169,6 +178,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (import.meta.env.DEV) setProfile(prev => prev ? { ...prev, api_key: key } : prev)
   }
 
+  const refreshApiKeyStatus = useCallback(async (companyId: string | null) => {
+    // Local development resolves key status through Supabase in fetchProfile.
+    if (import.meta.env.DEV) return
+    if (!companyId) {
+      setApiKeyConfigured(false)
+      return
+    }
+    try {
+      const checks = await Promise.all(MODEL_PROVIDERS.map(p => isIntegrationConnected(companyId, p.id)))
+      setApiKeyConfigured(checks.some(Boolean))
+    } catch {
+      setApiKeyConfigured(false)
+    }
+  }, [])
+
   const updateProfile = async (updates: Partial<Profile>) => {
     if (!profile) return
     await updateDataverseProfile(profile.id, updates)
@@ -179,7 +203,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider value={{
       user, profile, session, loading, apiKeyConfigured,
       signIn, signUp, signInWithGoogle, signOut,
-      updateApiKey, updateProfile,
+      updateApiKey, refreshApiKeyStatus, updateProfile,
     }}>
       {children}
     </AuthContext.Provider>

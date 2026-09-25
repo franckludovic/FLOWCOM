@@ -45,7 +45,7 @@ interface CompanyContextValue {
 const CompanyContext = createContext<CompanyContextValue | null>(null)
 
 export function CompanyProvider({ children }: { children: ReactNode }) {
-  const { user, profile } = useAuth()
+  const { user, profile, refreshApiKeyStatus } = useAuth()
   const [companies, setCompanies] = useState<Company[]>([])
   const [activeCompany, setActiveCompanyState] = useState<Company | null>(null)
   const [products, setProducts] = useState<Product[]>([])
@@ -83,6 +83,10 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       setActiveCompanyState(null)
     }
   }, [user, fetchCompanies])
+
+  useEffect(() => {
+    void refreshApiKeyStatus(activeCompany?.id ?? null)
+  }, [activeCompany?.id, refreshApiKeyStatus])
 
   useEffect(() => {
     if (activeCompany) fetchCompanyData(activeCompany.id)

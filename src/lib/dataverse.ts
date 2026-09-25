@@ -2,6 +2,7 @@ import {
   Fc_audiencesegmentsService,
   Fc_calendaritemsService,
   Fc_companiesService,
+  Fc_companyintegrationsService,
   Fc_companymembershipsService,
   Fc_contentscoresService,
   Fc_flowcomprofilesService,
@@ -601,5 +602,36 @@ export async function getDataverseWorkspaceCounts(companyId: string) {
     publishedLast30: libraryRows.filter((row) => row.fc_statusname === 'Published' && Date.parse(createdAt(row)) >= now - 30 * 24 * 60 * 60 * 1000).length,
     staleDrafts: libraryRows.filter((row) => row.fc_statusname === 'Draft' && Date.parse(createdAt(row)) <= now - 7 * 24 * 60 * 60 * 1000).length,
     hasReportThisWeek: reportRows.some((row) => Date.parse(createdAt(row)) >= weekStart.getTime()),
+  }
+}
+
+// Company Integrations holds only non-secret connection status. The secret
+// itself lives in Company Secrets and is reachable only through the flows.
+const INTEGRATION_PROVIDER = { buffer: 122370000, groq: 122370001 } as const
+const INTEGRATION_CONNECTED = 122370000
+
+export async function isIntegrationConnected(companyId: string, provider: keyof typeof INTEGRATION_PROVIDER): Promise<boolean> {
+  const rows = unwrap(await Fc_companyintegrationsService.getAll({
+    filter: `_fc_company_value eq ${companyId} and fc_provider eq ${INTEGRATION_PROVIDER[provider]} and fc_status eq ${INTEGRATION_CONNECTED}`,
+    top: 1,
+  }), 'load integration status')
+  return rows.length > 0
+}
+
+export async function markIntegrationConnected(companyId: string, provider: keyof typeof INTEGRATION_PROVIDER, label: string): Promise<void> {
+  const existing = unwrap(await Fc_companyintegrationsService.getAll({
+    filter: `_fc_company_value eq ${companyId} and fc_provider eq ${INTEGRATION_PROVIDER[provider]}`,
+    top: 1,
+  }), 'find integration')[0]
+  if (existing) {
+    unwrap(await Fc_companyintegrationsService.update(existing.fc_companyintegrationid, { fc_status: INTEGRATION_CONNECTED }), 'update integration')
+  } else {
+    unwrap(await Fc_companyintegrationsService.create({
+      'fc_Company@odata.bind': lookup('fc_companies', companyId),
+      fc_companyintegration1: label,
+      fc_provider: INTEGRATION_PROVIDER[provider],
+      fc_status: INTEGRATION_CONNECTED,
+      statecode: 0,
+    }), 'create integration')
   }
 }

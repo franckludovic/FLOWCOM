@@ -140,7 +140,7 @@ function TonePopover({ open, onClose, onApply, toningId, toneError, hasContent, 
         ))}
       </div>
       {!hasContent && <p className="mt-2 text-[10px] text-[var(--color-text-muted)] italic">{lang === 'fr' ? 'Écrivez votre post d\'abord.' : 'Write your post first.'}</p>}
-      {!apiOk && <p className="mt-2 text-[10px] text-amber-400 font-medium">{lang === 'fr' ? 'Clé Groq requise.' : 'Groq key required.'}</p>}
+      {!apiOk && <p className="mt-2 text-[10px] text-amber-400 font-medium">{lang === 'fr' ? 'Clé API du modèle IA requise.' : 'AI model API key required.'}</p>}
       {toneError && <p className="mt-2 text-[10px] text-red-400 flex items-center gap-1"><AlertCircle className="w-3 h-3 shrink-0" />{toneError}</p>}
     </div>
   )
@@ -578,7 +578,7 @@ export default function StudioPage() {
       if (cleaned) { setBeforeTone(content); setContent(cleaned) }
     } catch (e: any) {
       const k = buildModelError(e)
-      setToneError(k === 'error.noKey' ? (lang === 'fr' ? 'Clé Groq manquante.' : 'Missing Groq key.')
+      setToneError(k === 'error.noKey' ? (lang === 'fr' ? 'Clé API du modèle IA manquante.' : 'Missing AI model API key.')
         : k === 'error.429' ? (lang === 'fr' ? 'Limite atteinte.' : 'Rate limit hit.')
         : (lang === 'fr' ? 'Erreur IA.' : 'AI error.'))
     } finally { setToningId(null) }
@@ -590,7 +590,7 @@ export default function StudioPage() {
       ? `${content.trim()}\n\n${hashtags.trim()}` : content.trim()
     if (!activeCompany || !fullText || selectedProfiles.length === 0) return
 
-    // Skip AI check if Groq not configured - go straight to publish
+    // Skip AI check if no model provider is configured - go straight to publish
     if (!apiKeyConfigured) { handlePublish(); return }
 
     setPreCheckLoading(true)
