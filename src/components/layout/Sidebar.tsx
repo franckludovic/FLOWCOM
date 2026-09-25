@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, UserCircle, Brain, CalendarDays,
-  FileText, BookOpen, Map, BarChart2, Zap, History,
+  FileText, BookOpen, Map, BarChart2, Zap, History, Megaphone,
   ChevronLeft, ChevronRight, Building2, X, Send
 } from 'lucide-react'
 import { useI18n } from '@/contexts/I18nContext'
@@ -13,6 +13,7 @@ const SIDEBAR_STORAGE_KEY = 'flowcom:sidebar_collapsed'
 
 const navItems = [
   { to: '/workspace',   icon: LayoutDashboard, labelKey: 'nav.workspace' },
+  { to: '/campaigns',   icon: Megaphone,       labelKey: 'nav.campaigns' },
   { to: '/calendar',    icon: CalendarDays,    labelKey: 'nav.calendar' },
   { to: '/content',     icon: FileText,        labelKey: 'nav.content' },
   { to: '/library',     icon: BookOpen,        labelKey: 'nav.library' },

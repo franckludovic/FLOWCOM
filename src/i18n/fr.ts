@@ -21,6 +21,7 @@ const fr = {
   'nav.profile': 'Profil',
   'nav.profileDesc': 'Paramètres de l\'entreprise',
   'nav.settings': 'Paramètres',
+  'nav.campaigns': 'Campagnes',
   'settings.title': 'Paramètres & intégrations',
   'settings.subtitle': 'Gérez les clés API et les services connectés de',
   'settings.status.connected': 'Connecté',

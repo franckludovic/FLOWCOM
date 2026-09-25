@@ -61,24 +61,25 @@ export interface DataverseCalendarItem {
   format: 'Post' | 'Carousel' | 'Video' | 'Story'
   channel: string
   status: 'idea' | 'scheduled' | 'published'
+  campaign_id?: string | null
 }
 
-function unwrap<T>(result: OperationResult<T>, operation: string): T {
+export function unwrap<T>(result: OperationResult<T>, operation: string): T {
   if (!result.success) {
     throw new Error(result.error ? describeDataverseError(result.error) : `Dataverse operation failed: ${operation}`)
   }
   return result.data
 }
 
-function escapeODataString(value: string): string {
+export function escapeODataString(value: string): string {
   return value.replace(/'/g, "''")
 }
 
-function lookup(tableSetName: string, id: string): string {
+export function lookup(tableSetName: string, id: string): string {
   return `/${tableSetName}(${id})`
 }
 
-function createdAt(row: { createdon?: string; fc_createdon?: string }): string {
+export function createdAt(row: { createdon?: string; fc_createdon?: string }): string {
   return row.createdon ?? row.fc_createdon ?? new Date().toISOString()
 }
 
@@ -152,6 +153,7 @@ function companyFromRow(row: Fc_companies, userId: string, role?: CompanyRole): 
     targets: row.fc_argets ?? '',
     channels: row.fc_hannels ?? '',
     frequency: row.fc_ublishingfrequency ?? '',
+    currency: row.fc_currency || 'XAF',
     created_at: createdAt(row),
   }
 }
@@ -196,6 +198,7 @@ function calendarItemFromRow(row: Fc_calendaritems): DataverseCalendarItem {
     format: (format === 'carousel' ? 'Carousel' : format === 'video' ? 'Video' : format === 'story' ? 'Story' : 'Post'),
     channel: row.fc_channel ?? '',
     status: (row.fc_statusname === 'scheduled' ? 'scheduled' : row.fc_statusname === 'published' ? 'published' : 'idea'),
+    campaign_id: row._fc_campaign_value ?? null,
   }
 }
 
@@ -325,6 +328,7 @@ function companyChanges(updates: Partial<Company>): Record<string, string> {
     targets: 'fc_argets',
     channels: 'fc_hannels',
     frequency: 'fc_ublishingfrequency',
+    currency: 'fc_currency',
   }
   for (const [key, value] of Object.entries(updates)) {
     const dataverseKey = mapping[key]

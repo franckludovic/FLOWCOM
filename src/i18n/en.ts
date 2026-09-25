@@ -23,6 +23,7 @@ const en: Record<TranslationKey, string> = {
   'nav.profile': 'Profile',
   'nav.profileDesc': 'Company settings',
   'nav.settings': 'Settings',
+  'nav.campaigns': 'Campaigns',
   'settings.title': 'Settings & integrations',
   'settings.subtitle': 'Manage the API keys and connected services for',
   'settings.status.connected': 'Connected',

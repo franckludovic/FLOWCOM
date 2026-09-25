@@ -33,6 +33,8 @@ export interface Company {
   targets: string
   channels: string
   frequency: string
+  // ISO 4217 code; defaults to XAF
+  currency: string
   created_at: string
 }
 

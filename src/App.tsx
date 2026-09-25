@@ -19,6 +19,7 @@ import ReportPage from '@/pages/Report'
 import StudioPage from '@/pages/Studio'
 import PublishingHistoryPage from '@/pages/PublishingHistory'
 import SettingsPage from '@/pages/Settings'
+import CampaignsPage from '@/pages/Campaigns'
 
 export default function App() {
   return (
@@ -44,6 +45,8 @@ export default function App() {
                       <Route path="/report"             element={<ReportPage />} />
                       <Route path="/publishing-history" element={<PublishingHistoryPage />} />
                       <Route path="/settings"           element={<SettingsPage />} />
+                      <Route path="/campaigns"          element={<CampaignsPage />} />
+                      <Route path="/campaigns/:id"      element={<CampaignsPage />} />
                     </Route>
                   </Route>
                   <Route path="*" element={<Navigate to="/workspace" replace />} />
