@@ -276,7 +276,7 @@ export default function LibraryPage() {
               <label className="relative block min-w-[220px] flex-1">
                 <span className="sr-only">{c.search}</span>
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" aria-hidden="true" />
-                <input className="fc-input pl-9" value={search} placeholder={c.search} onChange={e => setSearch(e.target.value)} />
+                <input className="fc-input" style={{ paddingLeft: 36 }} value={search} placeholder={c.search} onChange={e => setSearch(e.target.value)} />
               </label>
               <select className="fc-input w-auto" aria-label={c.allNetworks} value={network} onChange={e => setNetwork(e.target.value)}>
                 <option value="all">{c.allNetworks}</option>

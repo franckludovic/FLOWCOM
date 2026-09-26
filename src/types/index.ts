@@ -80,7 +80,7 @@ export interface CalendarItem {
 // ─── Library ─────────────────────────────────────────────────────────────────
 export type ContentStatus = 'Draft' | 'Validated' | 'Published' | 'Archived'
 export type ContentTone = 'professional' | 'casual'
-export type ContentFormat = 'post' | 'carousel' | 'video'
+export type ContentFormat = 'post' | 'carousel' | 'video' | 'story'
 
 export interface LibraryItem {
   id: string

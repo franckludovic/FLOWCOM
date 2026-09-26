@@ -115,10 +115,12 @@ const roleValue: Record<CompanyRole, 122370000 | 122370001 | 122370002 | 1223700
   viewer: 122370003,
 }
 
-const libraryFormatValue: Record<string, 122370000 | 122370001 | 122370002> = {
+const libraryFormatValue: Record<string, 122370000 | 122370001 | 122370002 | 122370003> = {
   post: 122370000,
   carousel: 122370001,
   video: 122370002,
+  // Added by scripts/dataverse/add-story-format.mjs.
+  story: 122370003,
 }
 
 const libraryStatusValue: Record<string, 122370000 | 122370001 | 122370002 | 122370003> = {
@@ -506,7 +508,8 @@ function libraryPayload(companyId: string, item: Omit<LibraryRecord, 'id' | 'com
     fc_visualidea: item.visual_idea,
     fc_videoscript: item.video_script,
     fc_channel: item.channel,
-    fc_format: libraryFormatValue[item.format] ?? libraryFormatValue.post,
+    // The generated model predates the story option; the value is valid once the script has run.
+    fc_format: (libraryFormatValue[item.format] ?? libraryFormatValue.post) as Fc_libraryitems['fc_format'],
     fc_tone: item.tone,
     fc_status: libraryStatusValue[item.status] ?? libraryStatusValue.Draft,
     fc_publishdate: item.publish_date ?? undefined,

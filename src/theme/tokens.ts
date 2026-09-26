@@ -61,14 +61,14 @@ export const SHADOWS: Record<Mode, Record<'flat' | 'soft', ColorTokens>> = {
 }
 
 export const RADII: Record<'sharp' | 'soft' | 'round', ColorTokens> = {
-  sharp: { 'radius-sm': '2px', 'radius-md': '4px', 'radius-lg': '6px', 'radius-xl': '8px' },
-  soft: { 'radius-sm': '6px', 'radius-md': '8px', 'radius-lg': '12px', 'radius-xl': '16px' },
-  round: { 'radius-sm': '8px', 'radius-md': '12px', 'radius-lg': '18px', 'radius-xl': '24px' },
+  sharp: { 'radius-sm': '2px', 'radius-md': '3px', 'radius-lg': '4px', 'radius-xl': '6px' },
+  soft: { 'radius-sm': '4px', 'radius-md': '6px', 'radius-lg': '8px', 'radius-xl': '10px' },
+  round: { 'radius-sm': '6px', 'radius-md': '10px', 'radius-lg': '14px', 'radius-xl': '20px' },
 }
 
 export const DENSITY: Record<'compact' | 'comfortable', ColorTokens> = {
-  compact: { 'control-sm': '28px', 'control-md': '36px', 'control-lg': '44px', 'card-pad': '16px' },
-  comfortable: { 'control-sm': '32px', 'control-md': '40px', 'control-lg': '48px', 'card-pad': '20px' },
+  compact: { 'control-sm': '28px', 'control-md': '34px', 'control-lg': '40px', 'card-pad': '14px' },
+  comfortable: { 'control-sm': '32px', 'control-md': '38px', 'control-lg': '46px', 'card-pad': '18px' },
 }
 
 // Fonts bundled with the app (loaded in main.tsx). A client can pick among these.
@@ -104,6 +104,6 @@ export const DEFAULT_THEME: ThemeSettings = {
   displayFont: 'Manrope',
   bodyFont: 'Public Sans',
   corners: 'soft',
-  shadows: 'soft',
+  shadows: 'flat',
   density: 'compact',
 }

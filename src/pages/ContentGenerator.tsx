@@ -358,7 +358,7 @@ Respond only in ${L === 'fr' ? 'French' : 'English'}.`
       visual_idea: output.visualIdea,
       video_script: brief.format === 'Video' ? output.content : '',
       channel: brief.network,
-      format: brief.format === 'Carousel' ? 'carousel' : brief.format === 'Video' ? 'video' : 'post',
+      format: brief.format === 'Carousel' ? 'carousel' : brief.format === 'Video' ? 'video' : brief.format === 'Story' ? 'story' : 'post',
       tone: brief.tone,
       status: 'Draft',
       publish_date: null,
