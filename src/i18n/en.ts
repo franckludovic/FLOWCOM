@@ -6,7 +6,7 @@ const en: Record<TranslationKey, string> = {
   'nav.onboarding': 'Company Setup',
   'nav.onboardingDesc': 'Onboarding wizard',
   'nav.memory': 'Memory',
-  'nav.publishingHistory': 'Publishing History',
+  'nav.publishingHistory': 'Publications',
   'nav.memoryDesc': 'Company context',
   'nav.calendar': 'Editorial Calendar',
   'nav.calendarDesc': 'Plan campaigns',

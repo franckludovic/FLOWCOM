@@ -4,7 +4,7 @@ const fr = {
   'nav.onboarding': 'Configuration',
   'nav.onboardingDesc': "Assistant d'onboarding",
   'nav.memory': 'Mémoire',
-  'nav.publishingHistory': 'Historique des publications',
+  'nav.publishingHistory': 'Publications',
   'nav.memoryDesc': 'Contexte entreprise',
   'nav.calendar': 'Calendrier Éditorial',
   'nav.calendarDesc': 'Planifier campagnes',

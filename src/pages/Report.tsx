@@ -192,7 +192,7 @@ ${validPosts.map(p => `- ${p.title} (${p.channel}): Reach=${p.reach}, 3sViews=${
 
   const importFromBuffer = async () => {
     if (!activeCompany || !orgId) {
-      alert(lang === 'fr' ? 'Buffer non connecté.' : 'Buffer not connected yet.')
+      alert(lang === 'fr' ? 'Les réseaux sociaux ne sont pas encore connectés. Contactez votre gestionnaire FlowCom.' : 'Social networks are not connected yet. Contact your FlowCom manager.')
       return
     }
     setImporting(true)

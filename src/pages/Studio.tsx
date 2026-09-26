@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import EmojiPicker, { Theme as EmojiTheme, type EmojiClickData } from 'emoji-picker-react'
 import {
   AlertCircle, CalendarClock, Check, Loader2, Pause, Play, Plus, RotateCcw, Search, Send, Smile, Volume2, VolumeX, X,
@@ -54,7 +54,7 @@ const TONES: { id: ToneId; fr: string; en: string; prompt: string }[] = [
 
 const COPY = {
   fr: {
-    title: 'Studio', subtitle: 'Publiez ou programmez un post sur vos réseaux connectés à Buffer',
+    title: 'Studio', subtitle: 'Publiez ou programmez un post sur vos réseaux connectés',
     loadLibrary: 'Charger un contenu de la bibliothèque', noResult: 'Aucun résultat.', fromLibrary: 'Bibliothèque',
     post: 'Post', text: 'Texte', preview: 'Aperçu', format: 'Format', fromLibraryHint: 'Repris de la bibliothèque',
     textLabel: 'Texte du post', caption: 'Légende', placeholder: 'Écrivez votre post, ou chargez un contenu de la bibliothèque.',
@@ -62,8 +62,8 @@ const COPY = {
     hashtags: 'Hashtags', hashtagsPh: '#marque #ville', suggestTags: 'Proposer des hashtags à partir du texte', suggestingTags: 'Recherche de hashtags…', media: 'Médias', addMedia: 'Image ou vidéo', addVideo: 'Ajouter une vidéo',
     replace: 'Remplacer', remove: 'Retirer le média', play: 'Lire', pause: 'Pause', mute: 'Couper le son', unmute: 'Activer le son',
     mediaHint: (n: string) => `Format ${n} conseillé. 50 Mo maximum.`, fileTooBig: 'Fichier de plus de 50 Mo.',
-    publishTo: 'Publier sur', buffer: 'Comptes connectés à Buffer', chosen: (n: number) => `${n} choisi${n > 1 ? 's' : ''}`,
-    noAccounts: 'Aucun compte Buffer connecté.', connect: 'Connecter Buffer', loadingAccounts: 'Chargement des comptes…',
+    publishTo: 'Publier sur', buffer: 'Vos comptes connectés', chosen: (n: number) => `${n} choisi${n > 1 ? 's' : ''}`,
+    noAccounts: 'Aucun compte de réseau social n’est connecté. Contactez votre gestionnaire FlowCom.', unavailable: 'La publication est momentanément indisponible. Si cela dure, contactez votre gestionnaire FlowCom.', loadingAccounts: 'Chargement des comptes…',
     tooLong: 'Trop long', needsMedia: 'Média requis', needsVideo: 'Vidéo requise', shortVersion: 'Version courte',
     shortFor: (n: string) => `Version courte pour ${n}`, writingShort: 'Rédaction…', removeShort: 'Revenir au texte commun', shortLabel: (n: string) => `Texte pour ${n}`,
     when: 'Quand', now: 'Maintenant', schedule: 'Programmer', date: 'Date', time: 'Heure',
@@ -79,12 +79,12 @@ const COPY = {
     pickAccount: 'Choisissez au moins un compte', pickDate: 'Choisissez une date et une heure', pastDate: 'Cette date est déjà passée.',
     sending: 'Envoi…', uploading: 'Envoi des médias…',
     doneNow: (n: number) => `Publié sur ${n} compte${n > 1 ? 's' : ''}`, doneLater: (n: number, when: string) => `Programmé sur ${n} compte${n > 1 ? 's' : ''} pour le ${when}`,
-    doneText: 'Buffer se charge de la publication. Vous retrouverez ce post dans l’historique.', history: "Voir l'historique", another: 'Nouveau post',
+    doneText: 'La publication est prise en charge. Vous retrouverez ce post dans Publications.', history: 'Voir les publications', another: 'Nouveau post',
     seeMore: 'voir plus', nowLabel: 'maintenant', emptyPreview: 'Écrivez un texte pour voir l’aperçu.',
     error: 'Erreur', noText: 'Écrivez un texte avant d’envoyer.',
   },
   en: {
-    title: 'Studio', subtitle: 'Publish or schedule a post on your networks connected to Buffer',
+    title: 'Studio', subtitle: 'Publish or schedule a post on your connected networks',
     loadLibrary: 'Load an item from the library', noResult: 'No results.', fromLibrary: 'Library',
     post: 'Post', text: 'Text', preview: 'Preview', format: 'Format', fromLibraryHint: 'Taken from the library',
     textLabel: 'Post text', caption: 'Caption', placeholder: 'Write your post, or load an item from the library.',
@@ -92,8 +92,8 @@ const COPY = {
     hashtags: 'Hashtags', hashtagsPh: '#brand #city', suggestTags: 'Suggest hashtags from the text', suggestingTags: 'Finding hashtags…', media: 'Media', addMedia: 'Image or video', addVideo: 'Add a video',
     replace: 'Replace', remove: 'Remove the media', play: 'Play', pause: 'Pause', mute: 'Mute', unmute: 'Unmute',
     mediaHint: (n: string) => `${n} recommended. 50 MB max.`, fileTooBig: 'File over 50 MB.',
-    publishTo: 'Publish to', buffer: 'Accounts connected to Buffer', chosen: (n: number) => `${n} selected`,
-    noAccounts: 'No Buffer account connected.', connect: 'Connect Buffer', loadingAccounts: 'Loading accounts…',
+    publishTo: 'Publish to', buffer: 'Your connected accounts', chosen: (n: number) => `${n} selected`,
+    noAccounts: 'No social media account is connected. Contact your FlowCom manager.', unavailable: 'Publishing is unavailable right now. If it lasts, contact your FlowCom manager.', loadingAccounts: 'Loading accounts…',
     tooLong: 'Too long', needsMedia: 'Media required', needsVideo: 'Video required', shortVersion: 'Short version',
     shortFor: (n: string) => `Short version for ${n}`, writingShort: 'Writing…', removeShort: 'Back to the shared text', shortLabel: (n: string) => `Text for ${n}`,
     when: 'When', now: 'Now', schedule: 'Schedule', date: 'Date', time: 'Time',
@@ -109,7 +109,7 @@ const COPY = {
     pickAccount: 'Choose at least one account', pickDate: 'Choose a date and time', pastDate: 'This date has already passed.',
     sending: 'Sending…', uploading: 'Uploading media…',
     doneNow: (n: number) => `Published to ${n} account${n > 1 ? 's' : ''}`, doneLater: (n: number, when: string) => `Scheduled on ${n} account${n > 1 ? 's' : ''} for ${when}`,
-    doneText: 'Buffer takes care of publishing. You will find this post in the history.', history: 'See the history', another: 'New post',
+    doneText: 'Publishing is under way. You will find this post in Publications.', history: 'See publications', another: 'New post',
     seeMore: 'see more', nowLabel: 'now', emptyPreview: 'Write some text to see the preview.',
     error: 'Error', noText: 'Write some text before sending.',
   },
@@ -174,7 +174,8 @@ export default function StudioPage() {
   const campaign = campaigns.find(cp => cp.id === campaignId)
   const selectedChannels = channels.filter(ch => selected.includes(ch.id))
 
-  useEffect(() => { if (bufferError) setError(bufferError) }, [bufferError])
+  // The publishing service's own errors are for FlowCom's team, not the client.
+  useEffect(() => { if (bufferError) { console.warn('Publishing service:', bufferError); setError(c.unavailable) } }, [bufferError]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Select the first account once Buffer answers.
   useEffect(() => {
@@ -637,7 +638,7 @@ export default function StudioPage() {
               </div>
               {loadingChannels && <p className="m-0 flex items-center gap-2 text-[13px] text-ink-muted"><Loader2 className="h-4 w-4 animate-spin" />{c.loadingAccounts}</p>}
               {!loadingChannels && !channels.length && (
-                <div className="flex items-center justify-between gap-2 text-[13px] text-ink-muted">{c.noAccounts}<Link to="/settings" className="fc-btn fc-btn--secondary fc-btn--sm">{c.connect}</Link></div>
+                <p className="m-0 text-[13px] text-ink-muted">{c.noAccounts}</p>
               )}
               <div className="-mx-2 flex flex-col">
                 {channels.map(ch => {

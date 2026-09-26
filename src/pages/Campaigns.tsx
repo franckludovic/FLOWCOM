@@ -32,7 +32,7 @@ const COPY = {
     start: 'Début', end: 'Fin', save: 'Enregistrer', saving: 'Enregistrement…', cancel: 'Annuler', edit: 'Modifier',
     delete: 'Supprimer', confirmDelete: 'Supprimer cette campagne, ses résultats et ses analyses ?', back: 'Campagnes',
     brief: 'Brief', generateBrief: 'Générer le brief', generating: 'Génération…', briefEmpty: 'Aucun brief. Générez-en un ou rédigez-le.',
-    results: 'Résultats', refreshBuffer: 'Actualiser depuis Buffer', addResults: 'Saisir des résultats',
+    results: 'Résultats', refreshBuffer: 'Actualiser les résultats', addResults: 'Saisir des résultats',
     reach: 'Portée', impressions: 'Impressions', engagements: 'Engagements', clicks: 'Clics', leads: 'Prospects',
     noResults: 'Aucun résultat. Publiez des posts de cette campagne depuis le Studio ou saisissez des résultats.',
     date: 'Date', channel: 'Canal', source: 'Source', of: 'sur',
@@ -44,7 +44,7 @@ const COPY = {
     center: 'Centre du rayon', radius: 'Rayon (km)', noRadius: 'Pas de rayon', addQuarter: 'Ajouter un quartier', quarterName: 'Nom du quartier', add: 'Ajouter',
     zoneNote: "Les posts organiques ne sont pas limités à la zone : elle oriente le contenu, les tactiques locales et l'analyse. Le ciblage strict viendra avec la publicité payante et WhatsApp.",
     confirmDeleteZone: "Supprimer cette zone ? Les campagnes qui la ciblent n'auront plus de zone.", manageZones: 'Gérer les zones',
-    basedOn: 'Basé sur', nextSteps: 'Prochaines étapes', dayOf: 'Jour', synced: 'posts suivis, dont', withData: 'avec des données Buffer',
+    basedOn: 'Basé sur', nextSteps: 'Prochaines étapes', dayOf: 'Jour', synced: 'posts suivis, dont', withData: 'avec des résultats des réseaux',
     objectives: { awareness: 'Notoriété', engagement: 'Engagement', leads: 'Prospects', sales: 'Ventes', retention: 'Fidélisation' },
     statuses: { draft: 'Brouillon', planned: 'Planifiée', active: 'Active', paused: 'En pause', completed: 'Terminée', cancelled: 'Annulée' },
   },
@@ -56,7 +56,7 @@ const COPY = {
     start: 'Start', end: 'End', save: 'Save', saving: 'Saving…', cancel: 'Cancel', edit: 'Edit',
     delete: 'Delete', confirmDelete: 'Delete this campaign with its results and analyses?', back: 'Campaigns',
     brief: 'Brief', generateBrief: 'Generate brief', generating: 'Generating…', briefEmpty: 'No brief yet. Generate one or write it.',
-    results: 'Results', refreshBuffer: 'Refresh from Buffer', addResults: 'Enter results',
+    results: 'Results', refreshBuffer: 'Refresh results', addResults: 'Enter results',
     reach: 'Reach', impressions: 'Impressions', engagements: 'Engagements', clicks: 'Clicks', leads: 'Leads',
     noResults: 'No results yet. Publish this campaign\'s posts from Studio or enter results.',
     date: 'Date', channel: 'Channel', source: 'Source', of: 'of',
@@ -68,7 +68,7 @@ const COPY = {
     center: 'Radius centre', radius: 'Radius (km)', noRadius: 'No radius', addQuarter: 'Add a neighbourhood', quarterName: 'Neighbourhood name', add: 'Add',
     zoneNote: 'Organic posts are not restricted to the zone: it guides content, local tactics and analysis. Strict targeting comes with paid ads and WhatsApp.',
     confirmDeleteZone: 'Delete this zone? Campaigns targeting it will no longer have a zone.', manageZones: 'Manage zones',
-    basedOn: 'Based on', nextSteps: 'Next steps', dayOf: 'Day', synced: 'posts tracked,', withData: 'with Buffer data',
+    basedOn: 'Based on', nextSteps: 'Next steps', dayOf: 'Day', synced: 'posts tracked,', withData: 'with network results',
     objectives: { awareness: 'Awareness', engagement: 'Engagement', leads: 'Leads', sales: 'Sales', retention: 'Retention' },
     statuses: { draft: 'Draft', planned: 'Planned', active: 'Active', paused: 'Paused', completed: 'Completed', cancelled: 'Cancelled' },
   },
@@ -513,7 +513,7 @@ function CampaignDetail({ campaign, c, zoneLabel, onBack, onEdit, onChange, onDe
   })
 
   const syncBuffer = () => run('sync', async () => {
-    if (!activeCompany || !buffer.orgId) throw new Error(lang === 'fr' ? 'Buffer n\'est pas connecté.' : 'Buffer is not connected.')
+    if (!activeCompany || !buffer.orgId) throw new Error(lang === 'fr' ? 'Les réseaux sociaux ne sont pas encore connectés. Contactez votre gestionnaire FlowCom.' : 'Social networks are not connected yet. Contact your FlowCom manager.')
     const result = await syncCampaignBufferResults(activeCompany.id, campaign.id, buffer.orgId, buffer.channels)
     setMetrics(await listCampaignMetrics(campaign.id))
     setNotice(`${result.tracked} ${c.synced} ${result.matched} ${c.withData}.`)
