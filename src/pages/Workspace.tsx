@@ -22,11 +22,12 @@ interface Activity {
   action_fr: string
   action_en: string
   route: string
-  step?: number
+  section?: string
   priority: 'high' | 'medium' | 'low'
 }
 
 const ACTIVITY_TTL = 24 * 60 * 60 * 1000
+const MEMORY_SECTIONS = ['entreprise', 'identite', 'produits', 'audiences', 'messages', 'communication']
 const DAY = 86400000
 const PRIORITY_COLOR = { high: 'var(--danger)', medium: 'var(--warning)', low: 'var(--ink-subtle)' }
 const STATUS_TONE: Record<string, Tone> = { idea: 'neutral', scheduled: 'info', published: 'success' }
@@ -160,10 +161,10 @@ export default function WorkspacePage() {
       `Weekly report filed this week: ${counts.hasReportThisWeek ? 'yes' : 'no'}`,
       `Today: ${todayIso}`,
     ].filter(Boolean).join('\n')
-    const routes = ['/onboarding', '/memory', '/roadmap', '/report',
+    const routes = ['/memory', '/roadmap', '/report',
       ...(marketing ? ['/calendar', '/content', '/library', '/studio', '/publishing-history'] : []),
       ...(campaignsOn ? ['/campaigns'] : [])]
-    const cacheKey = `flowcom:workspace_activity:v4:${activeCompany.id}:${signals.length}:${todayIso}`
+    const cacheKey = `flowcom:workspace_activity:v5:${activeCompany.id}:${signals.length}:${todayIso}`
     if (!force) {
       try {
         const cached = JSON.parse(localStorage.getItem(cacheKey) ?? 'null') as { createdAt: number; activities: Activity[] } | null
@@ -174,18 +175,18 @@ export default function WorkspacePage() {
     setActivitiesError('')
     try {
       const result = await callModelJSON<{ activities: Activity[] }>(activeCompany.id, [
-        { role: 'system', content: `You are FlowCom's proactive communication strategist. Turn the live workspace signals into at most three useful, non-duplicated actions for today, most urgent first. Prioritise missing foundations, then what is due soonest, then optimisation. Each reason is one natural sentence for the user that states the fact behind it (a number, a date, a campaign name). Never quote the signal names below, never write "Signal", labels in parentheses or "key = value": the signals are internal notes, the reader never sees them. Write French fields entirely in French and English fields entirely in English. Return only JSON: {"activities":[{"title_fr":"short imperative in French","title_en":"short imperative in English","reason_fr":"one sentence in French","reason_en":"one sentence in English","action_fr":"2-3 word button label in French","action_en":"2-3 word button label in English","route":"one of ${routes.join(', ')}","step":"only for /onboarding: 1 company, 2 brand identity, 3 products, 4 audience, 5 communication","priority":"high or medium or low"}]}. Return an empty list when nothing needs doing. Never invent facts.\nCompany context:\n${buildAiContext({ company: activeCompany, products, segments, keyMessages })}\nLive signals:\n${signals}` },
+        { role: 'system', content: `You are FlowCom's proactive communication strategist. Turn the live workspace signals into at most three useful, non-duplicated actions for today, most urgent first. Prioritise missing foundations, then what is due soonest, then optimisation. Each reason is one natural sentence for the user that states the fact behind it (a number, a date, a campaign name). Never quote the signal names below, never write "Signal", labels in parentheses or "key = value": the signals are internal notes, the reader never sees them. Write French fields entirely in French and English fields entirely in English. Return only JSON: {"activities":[{"title_fr":"short imperative in French","title_en":"short imperative in English","reason_fr":"one sentence in French","reason_en":"one sentence in English","action_fr":"2-3 word button label in French","action_en":"2-3 word button label in English","route":"one of ${routes.join(', ')}","section":"only for /memory: entreprise (company facts), identite (mission, vision, values), produits (products), audiences, messages (key messages), communication (tone, networks, frequency)","priority":"high or medium or low"}]}. Return an empty list when nothing needs doing. Never invent facts.\nCompany context:\n${buildAiContext({ company: activeCompany, products, segments, keyMessages })}\nLive signals:\n${signals}` },
         { role: 'user', content: 'What should I do today?' },
       ], { temperature: 0.4, max_tokens: 900, requiredKeys: ['activities'] })
       const safe = (result.activities ?? []).filter(a =>
         a.title_fr && a.title_en && a.reason_fr && a.reason_en && a.action_fr && a.action_en && routes.includes(a.route) &&
-        (a.route !== '/onboarding' || (Number.isInteger(Number(a.step)) && Number(a.step) >= 1 && Number(a.step) <= 5)),
+        true,
       ).slice(0, 3).map(a => ({
         ...a,
         reason_fr: cleanReason(a.reason_fr),
         reason_en: cleanReason(a.reason_en),
         priority: (['high', 'medium', 'low'].includes(a.priority) ? a.priority : 'low') as Activity['priority'],
-        route: a.route === '/onboarding' ? `/onboarding?step=${Number(a.step)}` : a.route,
+        route: a.route === '/memory' && MEMORY_SECTIONS.includes(String(a.section)) ? `/memory#${a.section}` : a.route,
       }))
       setActivities(safe)
       try { localStorage.setItem(cacheKey, JSON.stringify({ createdAt: Date.now(), activities: safe })) } catch { /* storage unavailable */ }

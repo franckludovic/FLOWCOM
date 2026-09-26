@@ -413,6 +413,25 @@ export async function createDataverseSegment(companyId: string, segment: Omit<Au
   return segmentFromRow({ ...row, _fc_company_value: companyId })
 }
 
+export async function updateDataverseProduct(id: string, changes: Partial<Pick<Product, 'name' | 'description'>>): Promise<void> {
+  const payload: Record<string, string> = {}
+  if (changes.name !== undefined) payload.fc_name = changes.name
+  if (changes.description !== undefined) payload.fc_description = changes.description
+  unwrap(await Fc_productsService.update(id, payload), 'update product')
+}
+
+export async function updateDataverseSegment(id: string, changes: Partial<Pick<AudienceSegment, 'name' | 'pain_points' | 'interests'>>): Promise<void> {
+  const payload: Record<string, string> = {}
+  if (changes.name !== undefined) payload.fc_name = changes.name
+  if (changes.pain_points !== undefined) payload.fc_painpoints = changes.pain_points
+  if (changes.interests !== undefined) payload.fc_interests = changes.interests
+  unwrap(await Fc_audiencesegmentsService.update(id, payload), 'update audience segment')
+}
+
+export async function updateDataverseKeyMessage(id: string, content: string): Promise<void> {
+  unwrap(await Fc_keymessagesService.update(id, { fc_name: content.slice(0, 100), fc_content: content }), 'update key message')
+}
+
 export async function deleteDataverseSegment(id: string): Promise<void> {
   await Fc_audiencesegmentsService.delete(id)
 }

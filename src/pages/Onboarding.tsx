@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils'
 import type { Product, AudienceSegment } from '@/types'
 
 // ─── LocalStorage draft key ───────────────────────────────────
-const DRAFT_KEY = 'flowcom:onboarding:draft'
+const DRAFT_KEY = 'flowcom:onboarding:draft:new-company'
 
 // ─── Channel definitions ──────────────────────────────────────
 const CHANNELS = [
@@ -406,7 +406,7 @@ export default function OnboardingPage() {
   const { t } = useI18n()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { activeCompany, products, segments, createCompany, updateCompany, setActiveCompany, saveProducts, saveSegments } = useCompany()
+  const { createCompany, updateCompany, setActiveCompany, saveProducts, saveSegments } = useCompany()
 
   const initialDraft = loadDraft()
   const requestedStep = Number(searchParams.get('step'))
@@ -421,72 +421,6 @@ export default function OnboardingPage() {
   const [audienceData, setAudienceData] = useState<StepAudienceData>(initialDraft?.audienceData ?? defaultAudience)
   const [comms, setComms] = useState<StepCommsData>(initialDraft?.comms ?? defaultComms)
 
-  useEffect(() => {
-    let cancelled = false
-
-    const hydrateFromCompany = async () => {
-      let company = activeCompany
-      if (!company || cancelled) return
-
-      const nextGeneral = {
-        name: company.name ?? '',
-        industry: company.industry ?? '',
-        website: company.website ?? '',
-        founded_year: company.founded_year ?? '',
-        team_size: company.team_size ?? '1',
-        location: company.location ?? '',
-        short_desc: company.short_desc ?? '',
-      }
-      const nextBrand = {
-        mission: company.mission ?? '',
-        vision: company.vision ?? '',
-        values: company.values ?? '',
-      }
-      const nextComms = {
-        tone: company.tone ?? '',
-        targets: company.targets ?? '',
-        channels: company.channels ?? '',
-        frequency: company.frequency ?? '3x per week',
-      }
-      const keepDraftValue = (savedValue: string, draftValue: string) =>
-        draftValue.trim() ? draftValue : savedValue
-      const hydratedGeneral = Object.fromEntries(
-        Object.entries(nextGeneral).map(([key, value]) => [key, keepDraftValue(value, general[key as keyof StepGeneralData])])
-      ) as unknown as StepGeneralData
-      const hydratedBrand = Object.fromEntries(
-        Object.entries(nextBrand).map(([key, value]) => [key, keepDraftValue(value, brand[key as keyof StepBrandData])])
-      ) as unknown as StepBrandData
-      const hydratedComms = Object.fromEntries(
-        Object.entries(nextComms).map(([key, value]) => [key, keepDraftValue(value, comms[key as keyof StepCommsData])])
-      ) as unknown as StepCommsData
-
-      setGeneral(hydratedGeneral)
-      setBrand(hydratedBrand)
-      setComms(hydratedComms)
-
-      const hydratedProducts = products?.length
-        ? { products: products.map(product => ({ name: product.name, description: product.description })) }
-        : productsData
-      const hydratedAudience = segments?.length
-        ? { segments: segments.map(segment => ({ name: segment.name, pain_points: segment.pain_points, interests: segment.interests })) }
-        : audienceData
-      setProductsData(hydratedProducts)
-      setAudienceData(hydratedAudience)
-
-      const nextDraft: DraftState = {
-        step,
-        general: hydratedGeneral,
-        brand: hydratedBrand,
-        productsData: hydratedProducts,
-        audienceData: hydratedAudience,
-        comms: hydratedComms,
-      }
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(nextDraft))
-    }
-
-    hydrateFromCompany()
-    return () => { cancelled = true }
-  }, [activeCompany, products, segments])
 
   // Auto-save to localStorage on every change
   const persistDraft = useCallback(() => {
@@ -507,7 +441,8 @@ export default function OnboardingPage() {
   const handleComplete = async () => {
     setSaving(true)
     try {
-      const company = activeCompany ?? await createCompany(general.name || 'My Company')
+      // Always a new company: editing an existing one happens in Mémoire.
+      const company = await createCompany(general.name.trim() || 'My Company')
       if (!company) throw new Error('Failed to create company')
 
       const companyUpdates = {

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Gives the content columns of the library and calendar their real size.
+// Gives the content columns of the library, calendar and company memory
+// (company, products, audiences, key messages) their real size.
 // Their metadata says 4,000 characters but the database columns were left at
 // 100 (DatabaseLength 200 bytes), so any real post was refused with
 // "String or binary data would be truncated". This sets each column's size,
@@ -18,6 +19,11 @@ const CAST = 'Microsoft.Dynamics.CRM.StringAttributeMetadata'
 const COLUMNS = {
   fc_libraryitem: ['fc_title', 'fc_hook', 'fc_episodecontext', 'fc_body', 'fc_conclusion', 'fc_reward', 'fc_calltoaction', 'fc_hashtags', 'fc_visualidea', 'fc_videoscript', 'fc_channel', 'fc_tone'],
   fc_calendaritem: ['fc_topic', 'fc_goal', 'fc_channel'],
+  // Company memory (the odd names are the columns' real names in Dataverse).
+  fc_company: ['fc_ndustry', 'fc_ebsite', 'fc_ocation', 'fc_hortdescription', 'fc_ission', 'fc_ision', 'fc_alues', 'fc_one', 'fc_argets', 'fc_hannels', 'fc_ublishingfrequency', 'fc_eamsize', 'fc_oundedyear'],
+  fc_product: ['fc_description'],
+  fc_audiencesegment: ['fc_painpoints', 'fc_interests'],
+  fc_keymessage: ['fc_content'],
 }
 
 const headers = { 'MSCRM.SolutionUniqueName': SOLUTION, 'MSCRM.MergeLabels': 'true' }

@@ -5,7 +5,7 @@
 import { ManagerOnly } from '@/components/ManagerOnly'
 import type { ReactNode } from 'react'
 import {
-  BarChart2, BookOpen, Brain, CalendarDays, FileText, History, LayoutDashboard, Map, Megaphone, Send, UserCircle,
+  BarChart2, BookOpen, Brain, CalendarDays, FileText, History, LayoutDashboard, Map, Megaphone, Send,
   type LucideIcon,
 } from 'lucide-react'
 import type { TranslationKey } from '@/i18n/fr'
@@ -58,7 +58,6 @@ export const MODULES: ModuleDefinition[] = [
     nav: [
       { to: '/workspace', labelKey: 'nav.workspace', icon: LayoutDashboard, section: 'pilotage' },
       { to: '/memory', labelKey: 'nav.memory', icon: Brain, section: 'entreprise' },
-      { to: '/onboarding', labelKey: 'nav.profile', icon: UserCircle, section: 'entreprise' },
     ],
     routes: [
       { path: '/workspace', element: <WorkspacePage /> },

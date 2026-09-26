@@ -16,6 +16,9 @@ import {
   replaceDataverseProducts,
   replaceDataverseSegments,
   updateDataverseCompany,
+  updateDataverseKeyMessage,
+  updateDataverseProduct,
+  updateDataverseSegment,
 } from '@/lib/dataverse'
 import { setReportLearnings } from '@/lib/aiContext'
 import { listReports, recentLearnings } from '@/lib/reports'
@@ -41,6 +44,9 @@ interface CompanyContextValue {
   removeSegment: (id: string) => Promise<void>
   addKeyMessage: (content: string) => Promise<void>
   removeKeyMessage: (id: string) => Promise<void>
+  updateProduct: (id: string, changes: Partial<Pick<Product, 'name' | 'description'>>) => Promise<void>
+  updateSegment: (id: string, changes: Partial<Pick<AudienceSegment, 'name' | 'pain_points' | 'interests'>>) => Promise<void>
+  updateKeyMessage: (id: string, content: string) => Promise<void>
   refreshCompanyData: () => Promise<void>
 }
 
@@ -176,6 +182,21 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     setSegments(prev => prev.filter(s => s.id !== id))
   }
 
+  const updateProduct = async (id: string, changes: Partial<Pick<Product, 'name' | 'description'>>) => {
+    await updateDataverseProduct(id, changes)
+    setProducts(prev => prev.map(p => (p.id === id ? { ...p, ...changes } : p)))
+  }
+
+  const updateSegment = async (id: string, changes: Partial<Pick<AudienceSegment, 'name' | 'pain_points' | 'interests'>>) => {
+    await updateDataverseSegment(id, changes)
+    setSegments(prev => prev.map(s => (s.id === id ? { ...s, ...changes } : s)))
+  }
+
+  const updateKeyMessage = async (id: string, content: string) => {
+    await updateDataverseKeyMessage(id, content)
+    setKeyMessages(prev => prev.map(k => (k.id === id ? { ...k, content } : k)))
+  }
+
   const addKeyMessage = async (content: string) => {
     if (!activeCompany) return
     const data = await createDataverseKeyMessage(activeCompany.id, content)
@@ -193,6 +214,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
   return (
     <CompanyContext.Provider value={{
+      updateProduct, updateSegment, updateKeyMessage,
       companies, activeCompany, products, segments, keyMessages, loading,
       setActiveCompany, createCompany, updateCompany, deleteCompany,
       addProduct, saveProducts, removeProduct, addSegment, saveSegments, removeSegment,

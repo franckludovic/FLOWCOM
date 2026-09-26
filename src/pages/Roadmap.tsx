@@ -17,11 +17,11 @@ type MilestoneId = `m${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 1
 
 // Where each milestone gets done. Marketing pages only exist when the module is on.
 const MILESTONES: Array<{ id: MilestoneId; phase: 1 | 2 | 3 | 4; route: string; marketing?: boolean }> = [
-  { id: 'm1', phase: 1, route: '/onboarding?step=1' },
-  { id: 'm2', phase: 1, route: '/onboarding?step=2' },
-  { id: 'm3', phase: 1, route: '/onboarding?step=3' },
-  { id: 'm4', phase: 1, route: '/onboarding?step=4' },
-  { id: 'm5', phase: 1, route: '/onboarding?step=5' },
+  { id: 'm1', phase: 1, route: '/memory#entreprise' },
+  { id: 'm2', phase: 1, route: '/memory#identite' },
+  { id: 'm3', phase: 1, route: '/memory#produits' },
+  { id: 'm4', phase: 1, route: '/memory#audiences' },
+  { id: 'm5', phase: 1, route: '/memory#communication' },
   { id: 'm6', phase: 2, route: '/calendar', marketing: true },
   { id: 'm7', phase: 2, route: '/content', marketing: true },
   { id: 'm8', phase: 2, route: '/library', marketing: true },

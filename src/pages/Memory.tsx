@@ -1,474 +1,418 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
-import {
-  Brain, Copy, Check, Plus, Trash2, RefreshCw,
-  ChevronDown, ChevronRight, Sparkles, Shield,
-  Users, Package, MessageSquare, Megaphone, Eye,
-  Upload, Image as ImageIcon
-} from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
+import { Check, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react'
 import { useI18n } from '@/contexts/I18nContext'
 import { useCompany } from '@/contexts/CompanyContext'
+import { buildAiContext } from '@/lib/aiContext'
+import { listReports, recentLearnings } from '@/lib/reports'
+import { CHANNELS, joinChannels, parseChannels } from '@/lib/channels'
+import { Button, Card, CardBody, CardHeader, Chip } from '@/components/ui'
+import type { Company } from '@/types'
 import { cn } from '@/lib/utils'
 
-// ─── Build system prompt from company data ─────────────────────
-function buildSystemPrompt(
-  company: ReturnType<typeof useCompany>['activeCompany'],
-  products: ReturnType<typeof useCompany>['products'],
-  segments: ReturnType<typeof useCompany>['segments'],
-  keyMessages: ReturnType<typeof useCompany>['keyMessages'],
-): string {
-  if (!company) return ''
-  const lines: string[] = [
-    `# Brand Identity - ${company.name}`,
-    '',
-    `## Company Overview`,
-    `- **Name**: ${company.name}`,
-    company.industry   ? `- **Industry**: ${company.industry}`       : '',
-    company.location   ? `- **Location**: ${company.location}`       : '',
-    company.short_desc ? `- **Description**: ${company.short_desc}`  : '',
-    '',
-    `## Mission, Vision & Values`,
-    company.mission ? `- **Mission**: ${company.mission}` : '',
-    company.vision  ? `- **Vision**: ${company.vision}`   : '',
-    company.values  ? `- **Values**: ${company.values}`   : '',
-  ]
-  if (products.length) {
-    lines.push('', '## Products & Services')
-    products.forEach(p => lines.push(`- **${p.name}**: ${p.description}`))
+type CompanyField = 'name' | 'industry' | 'location' | 'website' | 'founded_year' | 'team_size' | 'short_desc' | 'mission' | 'vision' | 'values' | 'tone' | 'targets' | 'channels' | 'frequency'
+type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+const FIELDS: CompanyField[] = ['name', 'industry', 'location', 'website', 'founded_year', 'team_size', 'short_desc', 'mission', 'vision', 'values', 'tone', 'targets', 'channels', 'frequency']
+
+const COPY = {
+  fr: {
+    title: "Mémoire de l'entreprise", subtitle: (n: string) => `Tout ce que l'IA sait de ${n}. Chaque modification est enregistrée automatiquement.`,
+    saving: 'Enregistrement…', saved: 'Enregistré', error: "Une modification n'a pas pu être enregistrée", noCompany: 'Aucune entreprise active.',
+    sections: { entreprise: 'Entreprise', identite: 'Identité', produits: 'Produits et services', audiences: 'Audiences', messages: 'Messages clés', communication: 'Communication' },
+    hints: {
+      entreprise: 'Les faits de base, repris dans chaque texte.',
+      identite: 'Ce qui donne du sens à vos messages.',
+      produits: 'Ce que vous vendez : l’IA en parle avec vos mots.',
+      audiences: 'À qui vous parlez, ce qui les bloque et ce qui les intéresse.',
+      messages: 'Des règles que l’IA respecte toujours, par exemple « Toujours citer la garantie ».',
+      communication: 'Le ton et le rythme de vos publications.',
+    },
+    fields: {
+      name: 'Nom', industry: 'Secteur', location: 'Localisation', website: 'Site web', founded_year: 'Année de création', team_size: "Taille de l'équipe",
+      short_desc: 'Description courte', mission: 'Mission', vision: 'Vision', values: 'Valeurs', tone: 'Ton de voix', targets: 'Objectifs', channels: 'Réseaux utilisés', frequency: 'Fréquence de publication',
+    } as Record<CompanyField, string>,
+    placeholders: {
+      location: 'Ville, pays', website: 'https://', short_desc: 'En quelques phrases : ce que vous faites, pour qui, et ce qui vous distingue.',
+      mission: 'Pourquoi vous existez.', vision: 'Où vous voulez aller.', values: 'Par exemple : exigence, proximité, transparence',
+      tone: 'Par exemple : chaleureux et expert, tutoiement', targets: 'Par exemple : 30 inscriptions par mois, notoriété à Douala',
+    } as Partial<Record<CompanyField, string>>,
+    frequencies: ['1 fois par semaine', '3 fois par semaine', '5 fois par semaine', 'Chaque jour'],
+    productName: 'Nom du produit ou service', productDesc: 'Description', addProduct: 'Ajouter un produit',
+    segmentName: "Nom de l'audience", pain: 'Ce qui les bloque', interests: 'Ce qui les intéresse', addSegment: 'Ajouter une audience',
+    messagePh: 'Nouvelle règle, puis Entrée', addMessage: 'Ajouter', remove: 'Supprimer', cancel: 'Annuler',
+    confirm: 'Supprimer cet élément de la mémoire ?',
+    knows: "Ce que l'IA sait de vous", complete: (p: number) => `${p} % complète`, missing: 'À compléter', allGood: 'La mémoire est complète.',
+    checks: {
+      basics: 'Nom, secteur et description', mission: 'Mission', vision: 'Vision', values: 'Valeurs', products: 'Au moins 2 produits ou services',
+      audience: 'Une audience avec ses blocages', messages: 'Au moins 1 message clé', tone: 'Ton de voix', channels: 'Réseaux utilisés',
+    },
+    lessons: 'Leçons des derniers rapports', lessonsHint: 'Tirées des rapports hebdo et transmises à l’IA avec la mémoire.',
+    showSent: "Voir le texte exact transmis à l'IA", hideSent: 'Masquer le texte',
+  },
+  en: {
+    title: 'Company memory', subtitle: (n: string) => `Everything the AI knows about ${n}. Every change is saved automatically.`,
+    saving: 'Saving…', saved: 'Saved', error: 'A change could not be saved', noCompany: 'No active company.',
+    sections: { entreprise: 'Company', identite: 'Identity', produits: 'Products and services', audiences: 'Audiences', messages: 'Key messages', communication: 'Communication' },
+    hints: {
+      entreprise: 'The basic facts, used in every text.',
+      identite: 'What gives your messages meaning.',
+      produits: 'What you sell: the AI talks about it in your words.',
+      audiences: 'Who you talk to, what holds them back and what interests them.',
+      messages: 'Rules the AI always follows, for example “Always mention the guarantee”.',
+      communication: 'The tone and rhythm of your posts.',
+    },
+    fields: {
+      name: 'Name', industry: 'Industry', location: 'Location', website: 'Website', founded_year: 'Founded', team_size: 'Team size',
+      short_desc: 'Short description', mission: 'Mission', vision: 'Vision', values: 'Values', tone: 'Tone of voice', targets: 'Objectives', channels: 'Networks used', frequency: 'Posting frequency',
+    } as Record<CompanyField, string>,
+    placeholders: {
+      location: 'City, country', website: 'https://', short_desc: 'In a few sentences: what you do, for whom, and what sets you apart.',
+      mission: 'Why you exist.', vision: 'Where you want to go.', values: 'For example: excellence, closeness, transparency',
+      tone: 'For example: warm and expert, informal', targets: 'For example: 30 sign-ups a month, awareness in Douala',
+    } as Partial<Record<CompanyField, string>>,
+    frequencies: ['Once a week', '3 times a week', '5 times a week', 'Every day'],
+    productName: 'Product or service name', productDesc: 'Description', addProduct: 'Add a product',
+    segmentName: 'Audience name', pain: 'What holds them back', interests: 'What interests them', addSegment: 'Add an audience',
+    messagePh: 'New rule, then Enter', addMessage: 'Add', remove: 'Delete', cancel: 'Cancel',
+    confirm: 'Delete this item from the memory?',
+    knows: 'What the AI knows about you', complete: (p: number) => `${p}% complete`, missing: 'To complete', allGood: 'The memory is complete.',
+    checks: {
+      basics: 'Name, industry and description', mission: 'Mission', vision: 'Vision', values: 'Values', products: 'At least 2 products or services',
+      audience: 'An audience with what holds it back', messages: 'At least 1 key message', tone: 'Tone of voice', channels: 'Networks used',
+    },
+    lessons: 'Lessons from recent reports', lessonsHint: 'Taken from the weekly reports and passed to the AI with the memory.',
+    showSent: 'See the exact text passed to the AI', hideSent: 'Hide the text',
+  },
+}
+type Copy = typeof COPY.fr
+type SectionId = keyof Copy['sections']
+
+const pick = (company: Company | null) => Object.fromEntries(FIELDS.map(f => [f, (company?.[f] as string | undefined) ?? ''])) as Record<CompanyField, string>
+
+// Tracks saves across the page so the header can say "Saved" or report a failure.
+function useSaves() {
+  const [state, setState] = useState<SaveState>('idle')
+  const pending = useRef(0)
+  const run = async (action: () => Promise<void>) => {
+    pending.current += 1
+    setState('saving')
+    try {
+      await action()
+      pending.current -= 1
+      if (!pending.current) setState('saved')
+    } catch (err) {
+      pending.current -= 1
+      console.warn('Memory save failed', err)
+      setState('error')
+    }
   }
-  if (segments.length) {
-    lines.push('', '## Target Audience')
-    segments.forEach(s => {
-      lines.push(`### ${s.name}`)
-      if (s.pain_points) lines.push(`  - Pain points: ${s.pain_points}`)
-      if (s.interests)   lines.push(`  - Interests: ${s.interests}`)
-    })
-  }
-  if (keyMessages.length) {
-    lines.push('', '## Key Messaging Rules')
-    keyMessages.forEach(m => lines.push(`- ${m.content}`))
-  }
-  lines.push('', '## Communication Style')
-  if (company.tone)      lines.push(`- **Tone**: ${company.tone}`)
-  if (company.targets)   lines.push(`- **Objectives**: ${company.targets}`)
-  if (company.channels)  lines.push(`- **Channels**: ${company.channels}`)
-  if (company.frequency) lines.push(`- **Posting frequency**: ${company.frequency}`)
-  if (company.logo_url)  lines.push(`- **Visual Branding**: Official logo configured. Recommend visual hooks and branding consistency.`)
-  lines.push('', '---', '_Always write in the brand voice above. Stay consistent with the values and objectives._')
-  return lines.filter(Boolean).join('\n')
+  return { state, run }
 }
 
-// ─── Collapsible section ───────────────────────────────────────
-const colorMap = {
-  indigo:  'text-indigo-600  dark:text-indigo-400  bg-indigo-50  dark:bg-indigo-950/50',
-  violet:  'text-violet-600  dark:text-violet-400  bg-violet-50  dark:bg-violet-950/50',
-  blue:    'text-blue-600    dark:text-blue-400    bg-blue-50    dark:bg-blue-950/50',
-  emerald: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50',
-  amber:   'text-amber-600   dark:text-amber-400   bg-amber-50   dark:bg-amber-950/50',
-  rose:    'text-rose-600    dark:text-rose-400    bg-rose-50    dark:bg-rose-950/50',
-}
-
-function Section({
-  icon: Icon, title, badge, color = 'indigo', children, defaultOpen = true,
-}: {
-  icon: React.ElementType; title: string; badge?: string | number
-  color?: keyof typeof colorMap; children: React.ReactNode; defaultOpen?: boolean
-}) {
-  const [open, setOpen] = useState(defaultOpen)
-  return (
-    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl overflow-hidden">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-[var(--color-surface-alt)] transition-colors"
-      >
-        <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center shrink-0', colorMap[color])}>
-          <Icon className="w-3.5 h-3.5" />
-        </div>
-        <span className="font-semibold text-sm text-[var(--color-text)] flex-1 font-sans">{title}</span>
-        {badge !== undefined && (
-          <span className="text-xs text-[var(--color-text-muted)] bg-[var(--color-surface-alt)] border border-[var(--color-border)] px-2 py-0.5 rounded-full">
-            {badge}
-          </span>
-        )}
-        {open ? <ChevronDown className="w-4 h-4 text-[var(--color-text-muted)]" />
-               : <ChevronRight className="w-4 h-4 text-[var(--color-text-muted)]" />}
-      </button>
-      {open && (
-        <div className="px-5 pb-4 pt-1 border-t border-[var(--color-border)]">
-          {children}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Inline editable field ─────────────────────────────────────
-function EditField({
-  label, value, onChange, multiline = false, placeholder = '-',
-}: { label: string; value: string; onChange: (v: string) => void; multiline?: boolean; placeholder?: string }) {
-  const cls = "w-full px-3 py-2 text-sm rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)] text-[var(--color-text)] outline-none focus:ring-2 focus:ring-indigo-500 placeholder:text-[var(--color-text-muted)] resize-none"
-  return (
-    <div className="space-y-1">
-      <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider">{label}</label>
-      {multiline
-        ? <textarea value={value} onChange={e => onChange(e.target.value)} rows={3} placeholder={placeholder} className={cls} />
-        : <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={cls} />}
-    </div>
-  )
-}
-
-// ─── Toast ─────────────────────────────────────────────────────
-function useToast() {
-  const [msg, setMsg] = useState<string | null>(null)
-  const show = useCallback((m: string) => { setMsg(m); setTimeout(() => setMsg(null), 2200) }, [])
-  return { msg, show }
-}
-
-// ─── Page ──────────────────────────────────────────────────────
 export default function MemoryPage() {
-  const { t, lang } = useI18n()
+  const { lang } = useI18n()
+  const L: 'fr' | 'en' = lang === 'fr' ? 'fr' : 'en'
+  const c = COPY[L]
   const {
-    activeCompany, products, segments, keyMessages,
-    updateCompany, addProduct, removeProduct,
-    addSegment, removeSegment, addKeyMessage, removeKeyMessage,
+    activeCompany, products, segments, keyMessages, updateCompany,
+    addProduct, updateProduct, removeProduct, addSegment, updateSegment, removeSegment,
+    addKeyMessage, updateKeyMessage, removeKeyMessage,
   } = useCompany()
-  const toast = useToast()
+  const { hash } = useLocation()
+  const saves = useSaves()
+  const [form, setForm] = useState(() => pick(activeCompany))
+  const [lessons, setLessons] = useState<string[]>([])
+  const [showSent, setShowSent] = useState(false)
+  const timers = useRef<Partial<Record<CompanyField, number>>>({})
 
-  const [form, setForm] = useState({
-    name:       activeCompany?.name        ?? '',
-    industry:   activeCompany?.industry    ?? '',
-    location:   activeCompany?.location    ?? '',
-    website:    activeCompany?.website     ?? '',
-    short_desc: activeCompany?.short_desc  ?? '',
-    logo_url:   activeCompany?.logo_url    ?? '',
-    mission:    activeCompany?.mission     ?? '',
-    vision:     activeCompany?.vision      ?? '',
-    values:     activeCompany?.values      ?? '',
-    tone:       activeCompany?.tone        ?? '',
-    targets:    activeCompany?.targets     ?? '',
-    channels:   activeCompany?.channels    ?? '',
-    frequency:  activeCompany?.frequency   ?? '',
-  })
+  // Load the saved values when the company changes (not on every save).
+  useEffect(() => { setForm(pick(activeCompany)) }, [activeCompany?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The active company is loaded asynchronously from Dataverse. Hydrate the
-  // form when it becomes available instead of keeping the initial blank state.
   useEffect(() => {
     if (!activeCompany) return
-    setForm({
-      name:       activeCompany.name        ?? '',
-      industry:   activeCompany.industry    ?? '',
-      location:   activeCompany.location    ?? '',
-      website:    activeCompany.website     ?? '',
-      short_desc: activeCompany.short_desc  ?? '',
-      logo_url:   activeCompany.logo_url    ?? '',
-      mission:    activeCompany.mission     ?? '',
-      vision:     activeCompany.vision      ?? '',
-      values:     activeCompany.values      ?? '',
-      tone:       activeCompany.tone        ?? '',
-      targets:    activeCompany.targets     ?? '',
-      channels:   activeCompany.channels    ?? '',
-      frequency:  activeCompany.frequency   ?? '',
-    })
-  }, [activeCompany])
+    listReports(activeCompany.id).then(r => setLessons(recentLearnings(r))).catch(() => setLessons([]))
+  }, [activeCompany?.id])
 
-  const set = (k: keyof typeof form) => (v: string) => setForm(f => ({ ...f, [k]: v }))
+  // Links like /memory#produits land on their section.
+  useEffect(() => {
+    const id = hash.replace('#', '')
+    if (id) requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }, [hash])
 
-  const [newProduct, setNewProduct]   = useState({ name: '', description: '' })
-  const [newSegment, setNewSegment]   = useState({ name: '', pain_points: '', interests: '' })
-  const [newMessage, setNewMessage]   = useState('')
-  const [copied, setCopied]           = useState(false)
-
-
-  const systemPrompt = useMemo(() =>
-    buildSystemPrompt(activeCompany ? { ...activeCompany, ...form } : null, products, segments, keyMessages),
-    [activeCompany, form, products, segments, keyMessages]
-  )
-
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (file.size > 2 * 1024 * 1024) {
-      toast.show(lang === 'fr' ? 'Fichier trop lourd (max 2 Mo)' : 'File too large (max 2MB)')
-      return
-    }
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        set('logo_url')(reader.result)
-      }
-    }
-    reader.readAsDataURL(file)
-  }
-
-  const handleSave = async () => {
+  // A company field saves itself shortly after typing stops.
+  const setField = (field: CompanyField, value: string, delay = 700) => {
+    setForm(f => ({ ...f, [field]: value }))
     if (!activeCompany) return
-    await updateCompany(activeCompany.id, form)
-    toast.show(lang === 'fr' ? '✓ Mémoire sauvegardée' : '✓ Memory saved')
+    window.clearTimeout(timers.current[field])
+    timers.current[field] = window.setTimeout(() => {
+      if (field === 'name' && !value.trim()) return
+      void saves.run(() => updateCompany(activeCompany.id, { [field]: field === 'name' ? value.trim() : value }))
+    }, delay)
   }
 
-  const handleAddProduct = async () => {
-    if (!newProduct.name.trim()) return
-    await addProduct(newProduct); setNewProduct({ name: '', description: '' })
-  }
-  const handleAddSegment = async () => {
-    if (!newSegment.name.trim()) return
-    await addSegment(newSegment); setNewSegment({ name: '', pain_points: '', interests: '' })
-  }
-  const handleAddMessage = async () => {
-    if (!newMessage.trim()) return
-    await addKeyMessage(newMessage.trim()); setNewMessage('')
-  }
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(systemPrompt)
-    setCopied(true); setTimeout(() => setCopied(false), 1800)
-  }
+  const checks = useMemo(() => {
+    const f = form
+    const list: Array<{ key: keyof Copy['checks']; done: boolean; section: SectionId }> = [
+      { key: 'basics', done: Boolean(f.name.trim() && f.industry.trim() && f.short_desc.trim()), section: 'entreprise' },
+      { key: 'mission', done: Boolean(f.mission.trim()), section: 'identite' },
+      { key: 'vision', done: Boolean(f.vision.trim()), section: 'identite' },
+      { key: 'values', done: Boolean(f.values.trim()), section: 'identite' },
+      { key: 'products', done: products.length >= 2, section: 'produits' },
+      { key: 'audience', done: segments.some(s => s.pain_points.trim()), section: 'audiences' },
+      { key: 'messages', done: keyMessages.length >= 1, section: 'messages' },
+      { key: 'tone', done: Boolean(f.tone.trim()), section: 'communication' },
+      { key: 'channels', done: parseChannels(f.channels).length > 0, section: 'communication' },
+    ]
+    return list
+  }, [form, products, segments, keyMessages])
+  const pct = Math.round((checks.filter(x => x.done).length / checks.length) * 100)
 
-  if (!activeCompany) return (
-    <div className="flex flex-col items-center justify-center h-full text-center p-8">
-      <Brain className="w-12 h-12 text-[var(--color-text-muted)] mb-4" />
-      <h2 className="text-xl font-bold text-[var(--color-text)] font-sans mb-2">
-        {lang === 'fr' ? 'Aucune entreprise active' : 'No active company'}
-      </h2>
-      <p className="text-sm text-[var(--color-text-muted)]">
-        {lang === 'fr' ? 'Créez ou sélectionnez une entreprise d\'abord.' : 'Create or select a company first.'}
-      </p>
-    </div>
+  if (!activeCompany) return <div className="p-6 text-sm text-ink-muted">{c.noCompany}</div>
+
+  const sent = buildAiContext({ company: { ...activeCompany, ...form }, products, segments, keyMessages })
+  const field = (key: CompanyField, opts: { multiline?: boolean; rows?: number; className?: string; type?: string } = {}) => (
+    <label className={cn('fc-field', opts.className)}>
+      <span className="fc-label">{c.fields[key]}</span>
+      {opts.multiline
+        ? <textarea className="fc-input" rows={opts.rows ?? 3} value={form[key]} placeholder={c.placeholders[key]} onChange={e => setField(key, e.target.value)} />
+        : <input className="fc-input" type={opts.type ?? 'text'} value={form[key]} placeholder={c.placeholders[key]} onChange={e => setField(key, e.target.value)} />}
+    </label>
   )
+  const channels = parseChannels(form.channels)
 
   return (
-    <div className="h-full flex flex-col p-4 sm:p-6 gap-4 overflow-hidden">
-
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between gap-4 shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-violet-600 flex items-center justify-center shrink-0">
-            <Brain className="w-4.5 h-4.5 text-white" />
-          </div>
+    <div className="min-h-full bg-surface-page">
+      <div className="mx-auto flex max-w-[var(--content-max)] flex-col gap-3.5 px-4 py-5 sm:px-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-xl font-bold text-[var(--color-text)] font-sans leading-tight">{t('nav.memory')}</h1>
-            <p className="text-xs text-[var(--color-text-muted)] truncate">
-              {lang === 'fr' ? 'Contexte injecté dans chaque génération IA' : 'Context injected into every AI generation'}
-            </p>
+            <h1 className="m-0 text-[22px] font-bold leading-7 text-ink sm:text-[24px] sm:leading-[30px]" style={{ fontFamily: 'var(--font-display)' }}>{c.title}</h1>
+            <p className="m-0 mt-0.5 text-sm text-ink-muted">{c.subtitle(activeCompany.name)}</p>
           </div>
+          {saves.state !== 'idle' && (
+            <span className={cn('inline-flex items-center gap-1.5 text-[13px]', saves.state === 'error' ? 'text-danger' : 'text-ink-muted')}>
+              {saves.state === 'saved' && <Check className="h-3.5 w-3.5 text-success" />}
+              {saves.state === 'saving' ? c.saving : saves.state === 'saved' ? c.saved : c.error}
+            </span>
+          )}
         </div>
-        <button
-          onClick={handleSave}
-          className="shrink-0 flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-colors"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          {lang === 'fr' ? 'Sauvegarder' : 'Save'}
-        </button>
-      </div>
 
-      {/* ── Body: 2 columns ── */}
-      <div className="flex-1 flex gap-4 min-h-0 overflow-hidden">
-
-        {/* LEFT col - editable sections */}
-        <div className="flex-1 overflow-y-auto space-y-3 pb-6 min-w-0">
-
-          {/* 1. Company Profile */}
-          <Section icon={Shield} title={lang === 'fr' ? 'Profil Entreprise' : 'Company Profile'} color="indigo">
-            {/* Logo Uploader */}
-            <div className="mt-3 p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)] flex flex-wrap items-center gap-4">
-              <div className="w-16 h-16 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
-                {form.logo_url ? (
-                  <img src={form.logo_url} alt="Company Logo" className="w-full h-full object-contain p-1" />
-                ) : (
-                  <ImageIcon className="w-6 h-6 text-[var(--color-text-muted)]" />
-                )}
+        <div className="grid items-start gap-3.5 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="flex min-w-0 flex-col gap-3.5">
+            <Section id="entreprise" c={c}>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {field('name')}
+                {field('industry')}
+                {field('location')}
+                {field('website', { type: 'url' })}
+                {field('founded_year', { type: 'number' })}
+                {field('team_size')}
+                {field('short_desc', { multiline: true, rows: 4, className: 'sm:col-span-2' })}
               </div>
-              <div className="flex-1 min-w-[200px] space-y-1.5">
-                <p className="text-xs font-semibold text-[var(--color-text)]">
-                  {lang === 'fr' ? 'Logo de l\'entreprise' : 'Company Logo'}
-                </p>
-                <p className="text-[11px] text-[var(--color-text-muted)]">
-                  {lang === 'fr' ? 'PNG, JPG ou SVG (max 2 Mo). Utilisé dans votre espace de travail.' : 'PNG, JPG, or SVG (max 2MB). Used across your workspace.'}
-                </p>
-                <div className="flex items-center gap-2 pt-0.5">
-                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold cursor-pointer transition-colors">
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>{lang === 'fr' ? 'Importer un logo' : 'Upload Logo'}</span>
-                    <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
-                  </label>
-                  {form.logo_url && (
-                    <button
-                      type="button"
-                      onClick={() => set('logo_url')('')}
-                      className="text-xs text-rose-500 hover:underline px-2 py-1"
-                    >
-                      {lang === 'fr' ? 'Supprimer' : 'Remove'}
-                    </button>
-                  )}
-                </div>
+            </Section>
+
+            <Section id="identite" c={c}>
+              <div className="grid gap-3">
+                {field('mission', { multiline: true, rows: 2 })}
+                {field('vision', { multiline: true, rows: 2 })}
+                {field('values')}
               </div>
-            </div>
+            </Section>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-              <EditField label={lang === 'fr' ? 'Nom' : 'Name'} value={form.name} onChange={set('name')} />
-              <EditField label={lang === 'fr' ? 'Secteur' : 'Industry'} value={form.industry} onChange={set('industry')} />
-              <EditField label={lang === 'fr' ? 'Localisation' : 'Location'} value={form.location} onChange={set('location')} placeholder="Country, City" />
-              <EditField label="Website" value={form.website} onChange={set('website')} placeholder="https://" />
-              <div className="sm:col-span-2">
-                <EditField label={lang === 'fr' ? 'Description courte' : 'Short Description'} value={form.short_desc} onChange={set('short_desc')} multiline placeholder={lang === 'fr' ? 'En quoi consiste votre activité ?' : 'What does your business do?'} />
-              </div>
-            </div>
-          </Section>
+            <Section id="produits" c={c} count={products.length}>
+              <EditableList
+                items={products.map(p => ({ id: p.id, values: { name: p.name, description: p.description } }))}
+                fields={[{ key: 'name', label: c.productName }, { key: 'description', label: c.productDesc, multiline: true }]}
+                addLabel={c.addProduct} removeLabel={c.remove} cancelLabel={c.cancel} confirm={c.confirm}
+                onAdd={values => saves.run(() => addProduct({ name: values.name, description: values.description ?? '' }))}
+                onChange={(id, values) => saves.run(() => updateProduct(id, values))}
+                onRemove={id => saves.run(() => removeProduct(id))} />
+            </Section>
 
-          {/* 2. Brand Identity */}
-          <Section icon={Sparkles} title={lang === 'fr' ? 'Identité de Marque' : 'Brand Identity'} color="violet">
-            <div className="space-y-3 mt-3">
-              <EditField label="Mission" value={form.mission} onChange={set('mission')} multiline placeholder={lang === 'fr' ? 'Pourquoi existez-vous ?' : 'Why do you exist?'} />
-              <EditField label="Vision" value={form.vision} onChange={set('vision')} multiline placeholder={lang === 'fr' ? 'Où voulez-vous aller ?' : 'Where do you want to go?'} />
-              <EditField label={lang === 'fr' ? 'Valeurs' : 'Values'} value={form.values} onChange={set('values')} placeholder="Innovation, Transparence, Impact..." />
-            </div>
-          </Section>
+            <Section id="audiences" c={c} count={segments.length}>
+              <EditableList
+                items={segments.map(s => ({ id: s.id, values: { name: s.name, pain_points: s.pain_points, interests: s.interests } }))}
+                fields={[{ key: 'name', label: c.segmentName }, { key: 'pain_points', label: c.pain, multiline: true }, { key: 'interests', label: c.interests, multiline: true }]}
+                addLabel={c.addSegment} removeLabel={c.remove} cancelLabel={c.cancel} confirm={c.confirm}
+                onAdd={values => saves.run(() => addSegment({ name: values.name, pain_points: values.pain_points ?? '', interests: values.interests ?? '' }))}
+                onChange={(id, values) => saves.run(() => updateSegment(id, values))}
+                onRemove={id => saves.run(() => removeSegment(id))} />
+            </Section>
 
-          {/* 3. Products */}
-          <Section icon={Package} title={lang === 'fr' ? 'Produits & Services' : 'Products & Services'} badge={products.length} color="blue">
-            <div className="mt-3 space-y-2">
-              {products.map(p => (
-                <div key={p.id} className="flex items-start gap-3 p-3 rounded-xl bg-[var(--color-surface-alt)] border border-[var(--color-border)]">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm text-[var(--color-text)]">{p.name}</p>
-                    {p.description && <p className="text-xs text-[var(--color-text-muted)] mt-0.5 line-clamp-2">{p.description}</p>}
+            <Section id="messages" c={c} count={keyMessages.length}>
+              <Messages items={keyMessages.map(k => ({ id: k.id, content: k.content }))} c={c}
+                onAdd={content => saves.run(() => addKeyMessage(content))}
+                onChange={(id, content) => saves.run(() => updateKeyMessage(id, content))}
+                onRemove={id => saves.run(() => removeKeyMessage(id))} />
+            </Section>
+
+            <Section id="communication" c={c}>
+              <div className="grid gap-3">
+                {field('tone')}
+                {field('targets', { multiline: true, rows: 2 })}
+                <div className="fc-field">
+                  <span className="fc-label">{c.fields.channels}</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {CHANNELS.slice(0, 7).map(ch => {
+                      const on = channels.includes(ch.value)
+                      return <Chip key={ch.value} pressed={on} icon={<ch.icon className="h-3.5 w-3.5" style={{ color: ch.color }} />}
+                        onClick={() => setField('channels', joinChannels(on ? channels.filter(x => x !== ch.value) : [...channels, ch.value]), 300)}>{ch.label}</Chip>
+                    })}
                   </div>
-                  <button onClick={() => removeProduct(p.id)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 shrink-0">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
                 </div>
-              ))}
-              <div className="border-2 border-dashed border-[var(--color-border)] rounded-xl p-3 space-y-2">
-                <input value={newProduct.name} onChange={e => setNewProduct(p => ({ ...p, name: e.target.value }))}
-                  placeholder={lang === 'fr' ? 'Nom du produit / service' : 'Product / service name'}
-                  className="w-full text-sm px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-alt)] text-[var(--color-text)] outline-none focus:ring-2 focus:ring-indigo-500" />
-                <input value={newProduct.description} onChange={e => setNewProduct(p => ({ ...p, description: e.target.value }))}
-                  placeholder={lang === 'fr' ? 'Description courte' : 'Short description'}
-                  className="w-full text-sm px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-alt)] text-[var(--color-text)] outline-none focus:ring-2 focus:ring-indigo-500" />
-                <button onClick={handleAddProduct} disabled={!newProduct.name.trim()} className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-40">
-                  <Plus className="w-3.5 h-3.5" /> {lang === 'fr' ? 'Ajouter' : 'Add'}
-                </button>
-              </div>
-            </div>
-          </Section>
-
-          {/* 4. Audience */}
-          <Section icon={Users} title={lang === 'fr' ? 'Audience Cible' : 'Target Audience'} badge={segments.length} color="emerald">
-            <div className="mt-3 space-y-2">
-              {segments.map(s => (
-                <div key={s.id} className="p-3 rounded-xl bg-[var(--color-surface-alt)] border border-[var(--color-border)]">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="font-semibold text-sm text-[var(--color-text)]">{s.name}</p>
-                    <button onClick={() => removeSegment(s.id)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                <div className="fc-field">
+                  <span className="fc-label">{c.fields.frequency}</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {c.frequencies.map(fq => <Chip key={fq} pressed={form.frequency === fq} onClick={() => setField('frequency', fq, 300)}>{fq}</Chip>)}
                   </div>
-                  {s.pain_points && <p className="text-xs text-[var(--color-text-muted)]"><span className="text-rose-500 font-medium">⚡ </span>{s.pain_points}</p>}
-                  {s.interests   && <p className="text-xs text-[var(--color-text-muted)] mt-0.5"><span className="text-emerald-500 font-medium">✦ </span>{s.interests}</p>}
                 </div>
-              ))}
-              <div className="border-2 border-dashed border-[var(--color-border)] rounded-xl p-3 space-y-2">
-                {(['name', 'pain_points', 'interests'] as const).map(k => (
-                  <input key={k} value={newSegment[k]} onChange={e => setNewSegment(s => ({ ...s, [k]: e.target.value }))}
-                    placeholder={k === 'name' ? (lang === 'fr' ? 'Nom du segment' : 'Segment name') : k === 'pain_points' ? (lang === 'fr' ? 'Points de douleur' : 'Pain points') : (lang === 'fr' ? 'Intérêts & aspirations' : 'Interests & aspirations')}
-                    className="w-full text-sm px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-alt)] text-[var(--color-text)] outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+            </Section>
+          </div>
+
+          <Card className="lg:sticky lg:top-4">
+            <CardHeader title={c.knows} />
+            <CardBody className="flex flex-col gap-3.5">
+              <div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-[20px] font-bold text-ink tabular-nums" style={{ fontFamily: 'var(--font-display)' }}>{pct} %</span>
+                  <span className="text-[12px] text-ink-muted">{c.complete(pct)}</span>
+                </div>
+                <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-surface-sunken" aria-hidden="true"><span className="block h-full rounded-full bg-brand" style={{ width: `${pct}%` }} /></span>
+              </div>
+              <ul className="m-0 flex list-none flex-col gap-1 p-0 text-[13px]">
+                {checks.map(item => (
+                  <li key={item.key} className="flex items-center gap-2">
+                    <span className={cn('grid h-4 w-4 shrink-0 place-items-center rounded-full', item.done ? 'bg-success text-surface-card' : 'border border-line-strong')} aria-hidden="true">
+                      {item.done && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+                    </span>
+                    {item.done ? <span className="text-ink-muted">{c.checks[item.key]}</span>
+                      : <a href={`#${item.section}`} className="text-ink hover:text-brand hover:underline">{c.checks[item.key]}</a>}
+                  </li>
                 ))}
-                <button onClick={handleAddSegment} disabled={!newSegment.name.trim()} className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-40">
-                  <Plus className="w-3.5 h-3.5" /> {lang === 'fr' ? 'Ajouter' : 'Add'}
-                </button>
-              </div>
-            </div>
-          </Section>
-
-          {/* 5. Key Messaging Rules */}
-          <Section icon={MessageSquare} title={lang === 'fr' ? 'Règles de Messagerie' : 'Key Messaging Rules'} badge={keyMessages.length} color="amber">
-            <p className="text-xs text-[var(--color-text-muted)] mt-2 mb-3">
-              {lang === 'fr' ? 'Instructions que l\'IA doit toujours respecter.' : 'Instructions the AI must always follow.'}
-            </p>
-            <div className="space-y-2">
-              {keyMessages.map(m => (
-                <div key={m.id} className="flex items-start gap-3 p-3 rounded-xl bg-[var(--color-surface-alt)] border border-[var(--color-border)]">
-                  <span className="text-amber-500 text-sm mt-0.5">›</span>
-                  <p className="flex-1 text-sm text-[var(--color-text)]">{m.content}</p>
-                  <button onClick={() => removeKeyMessage(m.id)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+              </ul>
+              {lessons.length > 0 && (
+                <div className="border-t border-line pt-3">
+                  <p className="m-0 text-[13px] font-bold text-ink">{c.lessons}</p>
+                  <p className="m-0 mb-1.5 text-[12px] text-ink-muted">{c.lessonsHint}</p>
+                  <ul className="m-0 flex flex-col gap-1 pl-4 text-[13px] leading-[19px] text-ink-muted">{lessons.map(l => <li key={l}>{l}</li>)}</ul>
                 </div>
-              ))}
-              <div className="flex gap-2">
-                <input value={newMessage} onChange={e => setNewMessage(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleAddMessage()}
-                  placeholder={lang === 'fr' ? 'Ex: Toujours mentionner la garantie satisfait ou remboursé' : 'E.g. Always mention the money-back guarantee'}
-                  className="flex-1 text-sm px-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)] text-[var(--color-text)] outline-none focus:ring-2 focus:ring-indigo-500" />
-                <button onClick={handleAddMessage} disabled={!newMessage.trim()} className="p-2.5 bg-indigo-600 text-white rounded-xl disabled:opacity-40 hover:bg-indigo-700">
-                  <Plus className="w-4 h-4" />
+              )}
+              <div className="border-t border-line pt-2.5">
+                <button type="button" onClick={() => setShowSent(s => !s)} aria-expanded={showSent} className="inline-flex items-center gap-1 text-[12px] font-semibold text-ink-muted hover:text-ink">
+                  {showSent ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}{showSent ? c.hideSent : c.showSent}
                 </button>
+                {showSent && <pre className="m-0 mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded-[var(--radius-md)] bg-surface-sunken p-3 text-[11px] leading-4 text-ink-muted">{sent}</pre>}
               </div>
-            </div>
-          </Section>
+            </CardBody>
+          </Card>
+        </div>
+      </div>
+    </div>
+  )
+}
 
-          {/* 6. Communication Style */}
-          <Section icon={Megaphone} title={lang === 'fr' ? 'Style de Communication' : 'Communication Style'} color="rose" defaultOpen={false}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-              <EditField label={lang === 'fr' ? 'Ton de voix' : 'Tone of voice'} value={form.tone} onChange={set('tone')} />
-              <EditField label={lang === 'fr' ? 'Objectifs' : 'Objectives'} value={form.targets} onChange={set('targets')} />
-              <EditField label={lang === 'fr' ? 'Canaux' : 'Channels'} value={form.channels} onChange={set('channels')} />
-              <EditField label={lang === 'fr' ? 'Fréquence' : 'Frequency'} value={form.frequency} onChange={set('frequency')} />
-            </div>
-          </Section>
+function Section({ id, c, count, children }: { id: SectionId; c: Copy; count?: number; children: React.ReactNode }) {
+  return (
+    <Card id={id} className="scroll-mt-4">
+      <CardHeader title={<>{c.sections[id]}{count !== undefined && <span className="ml-1.5 font-semibold text-ink-muted">{count}</span>}</>} subtitle={c.hints[id]} />
+      <CardBody>{children}</CardBody>
+    </Card>
+  )
+}
 
-        </div>{/* end left col */}
+// Rows edited in place: each field saves when it loses focus.
+function EditableList<K extends string>({ items, fields, addLabel, removeLabel, cancelLabel, confirm, onAdd, onChange, onRemove }: {
+  items: Array<{ id: string; values: Record<K, string> }>
+  fields: Array<{ key: K; label: string; multiline?: boolean }>
+  addLabel: string; removeLabel: string; cancelLabel: string; confirm: string
+  onAdd: (values: Record<K, string>) => Promise<void>
+  onChange: (id: string, values: Partial<Record<K, string>>) => Promise<void>
+  onRemove: (id: string) => Promise<void>
+}) {
+  const empty = () => Object.fromEntries(fields.map(f => [f.key, ''])) as Record<K, string>
+  const [draft, setDraft] = useState<Record<K, string> | null>(null)
+  const nameKey = fields[0].key
 
-        {/* RIGHT col - prompt preview and published history */}
-        <div className="hidden lg:flex w-80 xl:w-96 shrink-0 flex-col gap-3">
-          <div className="flex-1 bg-gradient-to-br from-indigo-950 to-violet-950 rounded-2xl border border-indigo-800 overflow-hidden flex flex-col">
-            {/* Panel header */}
-            <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-indigo-800/60">
-              <div className="flex items-center gap-2">
-                <Eye className="w-4 h-4 text-indigo-300" />
-                <div>
-                  <p className="text-xs font-bold text-white">
-                    {lang === 'fr' ? 'Aperçu Prompt IA' : 'AI Prompt Preview'}
-                  </p>
-
-                </div>
-              </div>
-              <button
-                onClick={handleCopy}
-                className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-200 text-xs font-medium rounded-lg transition-colors shrink-0"
-              >
-                {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                {copied ? (lang === 'fr' ? 'Copié !' : 'Copied!') : (lang === 'fr' ? 'Copier' : 'Copy')}
-              </button>
-            </div>
-
-            {/* Prompt text - scrollable */}
-            <div className="flex-1 overflow-y-auto p-4">
-              <pre className="text-xs text-indigo-100 font-mono leading-relaxed whitespace-pre-wrap break-words">
-                {systemPrompt || (lang === 'fr' ? '(Remplissez les sections pour voir le prompt)' : '(Fill in sections to see the prompt)')}
-              </pre>
-            </div>
-
-            {/* Stats footer */}
-            <div className="flex items-center gap-3 px-4 py-2.5 border-t border-indigo-800/60 text-[10px] text-indigo-400 font-medium">
-              <span>{systemPrompt.split(/\s+/).filter(Boolean).length} {lang === 'fr' ? 'mots' : 'words'}</span>
-              <span className="text-indigo-700">·</span>
-              <span>~{Math.ceil(systemPrompt.length / 4)} tokens</span>
-              <span className="text-indigo-700">·</span>
-              <span className={systemPrompt.length > 3000 ? 'text-amber-400' : 'text-emerald-400'}>
-                {systemPrompt.length > 3000 ? (lang === 'fr' ? 'Long' : 'Long') : (lang === 'fr' ? 'Optimal' : 'Optimal')}
-              </span>
-            </div>
+  return (
+    <div className="flex flex-col gap-2">
+      {items.map(item => <ListRow key={item.id} item={item} fields={fields} removeLabel={removeLabel}
+        onChange={values => onChange(item.id, values)} onRemove={() => { if (window.confirm(confirm)) void onRemove(item.id) }} />)}
+      {draft ? (
+        <div className="grid gap-2 rounded-[var(--radius-md)] border border-dashed border-line-strong p-3 sm:grid-cols-2">
+          {fields.map(f => (
+            <label key={f.key} className={cn('fc-field', f.multiline && fields.length === 2 && 'sm:col-span-1')}>
+              <span className="fc-label">{f.label}</span>
+              {f.multiline
+                ? <textarea className="fc-input" rows={2} value={draft[f.key]} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })} />
+                : <input className="fc-input" autoFocus={f.key === nameKey} value={draft[f.key]} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })} />}
+            </label>
+          ))}
+          <div className="flex justify-end gap-2 sm:col-span-2">
+            <Button variant="ghost" size="sm" onClick={() => setDraft(null)}>{cancelLabel}</Button>
+            <Button variant="primary" size="sm" disabled={!draft[nameKey].trim()} onClick={() => { void onAdd({ ...draft, [nameKey]: draft[nameKey].trim() }); setDraft(null) }}>{addLabel}</Button>
           </div>
         </div>
-
-      </div>{/* end body */}
-
-      {/* Toast */}
-      {toast.msg && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-2xl shadow-xl">
-          {toast.msg}
-        </div>
+      ) : (
+        <Button variant="secondary" size="sm" icon={<Plus />} className="self-start" onClick={() => setDraft(empty())}>{addLabel}</Button>
       )}
+    </div>
+  )
+}
 
+function ListRow<K extends string>({ item, fields, removeLabel, onChange, onRemove }: {
+  item: { id: string; values: Record<K, string> }
+  fields: Array<{ key: K; label: string; multiline?: boolean }>
+  removeLabel: string
+  onChange: (values: Partial<Record<K, string>>) => Promise<void>
+  onRemove: () => void
+}) {
+  const [values, setValues] = useState(item.values)
+  const commit = (key: K) => {
+    if (values[key] === item.values[key] || (key === fields[0].key && !values[key].trim())) return
+    void onChange({ [key]: values[key] } as Partial<Record<K, string>>)
+  }
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-[var(--radius-md)] border border-line p-3">
+      <div className={cn('grid gap-2', fields.length === 2 ? 'sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]' : 'sm:grid-cols-3')}>
+        {fields.map(f => (
+          <label key={f.key} className="fc-field">
+            <span className="fc-label">{f.label}</span>
+            {f.multiline
+              ? <textarea className="fc-input" rows={2} value={values[f.key]} onChange={e => setValues({ ...values, [f.key]: e.target.value })} onBlur={() => commit(f.key)} />
+              : <input className="fc-input font-semibold" value={values[f.key]} onChange={e => setValues({ ...values, [f.key]: e.target.value })} onBlur={() => commit(f.key)} />}
+          </label>
+        ))}
+      </div>
+      <Button variant="ghost" size="sm" iconOnly icon={<Trash2 />} aria-label={removeLabel} className="mt-5 text-danger" onClick={onRemove} />
+    </div>
+  )
+}
+
+function Messages({ items, c, onAdd, onChange, onRemove }: {
+  items: Array<{ id: string; content: string }>; c: Copy
+  onAdd: (content: string) => Promise<void>; onChange: (id: string, content: string) => Promise<void>; onRemove: (id: string) => Promise<void>
+}) {
+  const [text, setText] = useState('')
+  const add = () => { if (text.trim()) { void onAdd(text.trim()); setText('') } }
+  return (
+    <div className="flex flex-col gap-2">
+      {items.map(item => <MessageRow key={item.id} item={item} c={c} onChange={content => onChange(item.id, content)} onRemove={() => { if (window.confirm(c.confirm)) void onRemove(item.id) }} />)}
+      <div className="flex gap-2">
+        <input className="fc-input flex-1" value={text} placeholder={c.messagePh} aria-label={c.messagePh}
+          onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }} />
+        <Button variant="secondary" icon={<Plus />} disabled={!text.trim()} onClick={add}>{c.addMessage}</Button>
+      </div>
+    </div>
+  )
+}
+
+function MessageRow({ item, c, onChange, onRemove }: { item: { id: string; content: string }; c: Copy; onChange: (content: string) => Promise<void>; onRemove: () => void }) {
+  const [value, setValue] = useState(item.content)
+  return (
+    <div className="flex items-start gap-2">
+      <textarea className="fc-input flex-1" rows={1} value={value} aria-label={c.sections.messages} style={{ minHeight: 34, paddingTop: 7, paddingBottom: 7 }}
+        onChange={e => setValue(e.target.value)} onBlur={() => { if (value.trim() && value !== item.content) void onChange(value.trim()) }} />
+      <Button variant="ghost" size="sm" iconOnly icon={<Trash2 />} aria-label={c.remove} className="mt-0.5 text-danger" onClick={onRemove} />
     </div>
   )
 }
