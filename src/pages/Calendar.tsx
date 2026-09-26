@@ -212,24 +212,28 @@ export default function CalendarPage() {
 
   const writeWithAi = (item: CalendarItem | Draft) => {
     const first = networkOf(item.channel)
-    navigate(`/content?${new URLSearchParams({ topic: item.topic, channel: first, goal: item.goal, format: item.format, ...(item.campaign_id ? { campaign: item.campaign_id } : {}) }).toString()}`)
+    navigate(`/content?${new URLSearchParams({ topic: item.topic, channel: first, goal: item.goal, format: item.format, date: item.date, ...(item.id ? { item: item.id } : {}), ...(item.campaign_id ? { campaign: item.campaign_id } : {}) }).toString()}`)
   }
 
-  const saveDraft = async (next: Draft) => {
-    if (!activeCompany) return
+  const saveDraft = async (next: Draft): Promise<CalendarItem | null> => {
+    if (!activeCompany) return null
     const { id, campaign_id, ...fields } = next
+    let saved: CalendarItem
     if (id) {
       await updateDataverseCalendarItem(id, fields)
       const previous = items.find(i => i.id === id)
       if ((previous?.campaign_id ?? null) !== (campaign_id ?? null)) await setContentCampaign('calendar', id, campaign_id ?? null)
-      setItems(prev => prev.map(i => i.id === id ? { ...i, ...fields, campaign_id } : i))
+      saved = { ...fields, id, campaign_id }
+      setItems(prev => prev.map(i => i.id === id ? saved : i))
     } else {
       const created = await createDataverseCalendarItem(activeCompany.id, fields)
       if (campaign_id) await setContentCampaign('calendar', created.id, campaign_id)
-      setItems(prev => [...prev, { ...(created as CalendarItem), campaign_id }])
+      saved = { ...(created as CalendarItem), campaign_id }
+      setItems(prev => [...prev, saved])
     }
     window.dispatchEvent(new Event('flowcom:data-updated'))
     setDraft(null)
+    return saved
   }
 
   const deleteItem = async (id: string) => {
@@ -360,7 +364,7 @@ export default function CalendarPage() {
         onOpen={item => { setOpenDay(null); setDraft({ ...item }) }}
         onNew={date => { setOpenDay(null); openNew(date) }} />
 
-      <DetailSheet draft={draft} onClose={() => setDraft(null)} c={c} lang={L} campaigns={campaigns} canEdit={canEdit}
+      <DetailSheet draft={draft} onClose={() => setDraft(null)} c={c} lang={L} campaigns={campaigns} canEdit={canEdit} apiReady={apiKeyConfigured}
         onSave={saveDraft} onDelete={deleteItem} onWrite={writeWithAi} onAdapt={setDraft} />
     </div>
   )
@@ -765,10 +769,10 @@ Spread the ideas evenly and vary the formats. Respond in ${lang === 'fr' ? 'Fren
 
 // ─── Detail (edit or new idea) ────────────────────────────────────────────────
 
-function DetailSheet({ draft, onClose, c, lang, campaigns, canEdit, onSave, onDelete, onWrite, onAdapt }: {
+function DetailSheet({ draft, onClose, c, lang, campaigns, canEdit, apiReady, onSave, onDelete, onWrite, onAdapt }: {
   draft: Draft | null; onClose: () => void; c: Copy; lang: 'fr' | 'en'
-  campaigns: ReturnType<typeof useCampaignOptions>['campaigns']; canEdit: boolean
-  onSave: (draft: Draft) => Promise<void>; onDelete: (id: string) => Promise<void>; onWrite: (draft: Draft) => void
+  campaigns: ReturnType<typeof useCampaignOptions>['campaigns']; canEdit: boolean; apiReady: boolean
+  onSave: (draft: Draft) => Promise<CalendarItem | null>; onDelete: (id: string) => Promise<void>; onWrite: (item: CalendarItem) => void
   onAdapt: (copy: Draft) => void
 }) {
   const [form, setForm] = useState<Draft | null>(draft)
@@ -785,10 +789,21 @@ function DetailSheet({ draft, onClose, c, lang, campaigns, canEdit, onSave, onDe
     setError('')
     try { await action() } catch (err) { setError(err instanceof Error ? err.message : String(err)) } finally { setBusy(false) }
   }
-  const save = () => {
-    if (!form.topic.trim()) { setError(c.needTopic); return }
-    if (!network) { setError(c.needNetwork); return }
-    void run(() => onSave({ ...form, channel: network, topic: form.topic.trim(), goal: form.goal.trim() }))
+  const valid = () => {
+    if (!form.topic.trim()) { setError(c.needTopic); return false }
+    if (!network) { setError(c.needNetwork); return false }
+    return true
+  }
+  const cleaned = { ...form, channel: network, topic: form.topic.trim(), goal: form.goal.trim() }
+  const save = () => { if (valid()) void run(async () => { await onSave(cleaned) }) }
+  // Writing saves any change first, so the generator gets the current idea and its id.
+  const write = () => {
+    if (!valid()) return
+    const unchanged = draft && form.id && (Object.keys(cleaned) as Array<keyof Draft>).every(k => (cleaned[k] ?? null) === (draft[k] ?? null))
+    void run(async () => {
+      const item = unchanged ? (cleaned as CalendarItem) : await onSave(cleaned)
+      if (item) onWrite(item)
+    })
   }
 
   return (
@@ -803,7 +818,8 @@ function DetailSheet({ draft, onClose, c, lang, campaigns, canEdit, onSave, onDe
         )}
         <span className="flex-1" />
         <Button variant="ghost" onClick={onClose}>{c.cancel}</Button>
-        <Button variant="primary" loading={busy} disabled={!canEdit} onClick={save}>{c.save}</Button>
+        <Button variant="secondary" disabled={!canEdit || busy} onClick={save}>{c.save}</Button>
+        <Button variant="ai" loading={busy} disabled={!canEdit || !apiReady} onClick={write}>{c.write}</Button>
       </>}>
       <div className="fc-field">
         <span className="fc-label">{lang === 'fr' ? 'Statut' : 'Status'}</span>
@@ -855,10 +871,6 @@ function DetailSheet({ draft, onClose, c, lang, campaigns, canEdit, onSave, onDe
           </div>
           <span className="fc-hint">{c.adaptHint}</span>
         </div>
-      )}
-      {form.status === 'idea' && form.topic.trim() && (
-        <InsightCard kind={c.notWritten} title={c.notWrittenText}
-          action={<Button variant="ai" size="sm" onClick={() => onWrite(form)}>{c.write}</Button>} />
       )}
       {error && <p className="m-0 text-[13px] text-danger">{error}</p>}
     </Sheet>

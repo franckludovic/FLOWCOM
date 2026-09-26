@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useBuffer, bufferQuery } from '@/contexts/BufferContext'
 import { callModel, buildModelError } from '@/lib/model'
 import { buildAiContext } from '@/lib/aiContext'
-import { listDataverseLibraryItems, updateDataverseLibraryItem } from '@/lib/dataverse'
+import { listDataverseLibraryItems, updateDataverseCalendarItem, updateDataverseLibraryItem } from '@/lib/dataverse'
 import { recordPostPublished, setContentCampaign } from '@/lib/campaigns'
 import { addUtm, bufferChannelMatchesCampaign, buildCampaignContext, campaignWarnings, useCampaignOptions } from '@/lib/campaignContext'
 import {
@@ -704,6 +704,13 @@ export default function StudioPage() {
       if (selectedItemId) {
         await updateDataverseLibraryItem(selectedItemId, { status: 'Published' })
         setLibraryItems(items => items.map(i => i.id === selectedItemId ? { ...i, status: 'Published' } : i))
+        window.dispatchEvent(new Event('flowcom:data-updated'))
+      }
+      // A post written from a calendar idea moves that idea forward.
+      const calendarId = searchParams.get('calendar')
+      if (calendarId) {
+        await updateDataverseCalendarItem(calendarId, { status: scheduledAt.trim() ? 'scheduled' : 'published' })
+          .catch(calendarError => console.warn('Published, but could not update the calendar idea', calendarError))
         window.dispatchEvent(new Event('flowcom:data-updated'))
       }
       setPublishSuccess(true)
