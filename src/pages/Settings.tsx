@@ -4,14 +4,14 @@ import { Brain, Check, ExternalLink, Loader2, Send, ShieldCheck } from 'lucide-r
 import { useI18n } from '@/contexts/I18nContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCompany } from '@/contexts/CompanyContext'
-import { useBuffer } from '@/contexts/BufferContext'
+import { useBuffer, bufferQuery } from '@/contexts/BufferContext'
 import {
   INTEGRATIONS,
   type IntegrationDefinition, type IntegrationId, type ProviderOption,
 } from '@/lib/integrations'
 import { saveBufferToken } from '@/lib/buffer'
 import { cn } from '@/lib/utils'
-import { Tabs } from '@/components/ui'
+import { Button, Tabs } from '@/components/ui'
 import { AppearanceSettings } from './settings/AppearanceSettings'
 import { ModulesSettings } from './settings/ModulesSettings'
 
@@ -113,6 +113,8 @@ export default function SettingsPage() {
               <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
               {t('settings.secureNote')}
             </p>
+
+            {buffer.orgId && <StatsCheck fr={fr} companyId={activeCompany.id} orgId={buffer.orgId} channels={buffer.channels} />}
           </>
         )}
       </div>
@@ -241,5 +243,71 @@ function IntegrationRow({ integration, handler, canManage }: {
         </form>
       )}
     </div>
+  )
+}
+
+// Team tool: shows which figures the publishing service really returns for
+// the last published posts, before the weekly report relies on them.
+function StatsCheck({ fr, companyId, orgId, channels }: {
+  fr: boolean; companyId: string; orgId: string; channels: Array<{ id: string; name: string; service: string }>
+}) {
+  type Metric = { type: string; name: string; value: number | string }
+  type Checked = { id: string; text: string; sentAt: string | null; channel: string; metrics: Metric[] }
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [posts, setPosts] = useState<Checked[] | null>(null)
+
+  const run = async () => {
+    setBusy(true)
+    setError('')
+    setPosts(null)
+    try {
+      const data = await bufferQuery(companyId, `query StatsCheck($input: PostsInput!) {
+        posts(first: 5, input: $input) { edges { node { id text sentAt channelId metrics { type name value } } } }
+      }`, { input: { organizationId: orgId, filter: { status: ['sent'], channelIds: channels.map(c => c.id) } } })
+      type Node = { id: string; text?: string; sentAt?: string; channelId: string; metrics?: Metric[] }
+      const edges: Array<{ node: Node }> = data?.posts?.edges ?? []
+      setPosts(edges.map(({ node }) => {
+        const ch = channels.find(c => c.id === node.channelId)
+        return { id: node.id, text: node.text ?? '', sentAt: node.sentAt ?? null, channel: ch ? `${ch.name} (${ch.service})` : node.channelId, metrics: node.metrics ?? [] }
+      }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const withFigures = posts?.filter(p => p.metrics.some(m => Number(m.value) > 0)).length ?? 0
+  const summary = !posts ? ''
+    : !posts.length ? (fr ? 'Aucun post publié trouvé.' : 'No published post found.')
+    : withFigures ? (fr ? `Des chiffres reviennent pour ${withFigures} post(s) sur ${posts.length}.` : `Figures come back for ${withFigures} of ${posts.length} post(s).`)
+    : (fr ? `Aucun chiffre ne revient pour ces ${posts.length} posts.` : `No figures come back for these ${posts.length} posts.`)
+
+  return (
+    <section className="fc-card">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+        <div className="min-w-0">
+          <p className="m-0 text-sm font-semibold text-ink">{fr ? 'Tester les statistiques des posts' : 'Test post statistics'}</p>
+          <p className="m-0 text-xs text-ink-muted">{fr ? 'Demande à Buffer les chiffres de vos 5 derniers posts publiés et affiche ce qui revient.' : 'Asks Buffer for the figures of your last 5 published posts and shows what comes back.'}</p>
+        </div>
+        <Button variant="secondary" size="sm" loading={busy} onClick={() => void run()}>{fr ? 'Tester' : 'Test'}</Button>
+      </div>
+      {(error || posts) && (
+        <div className="flex flex-col gap-2 border-t border-line px-4 py-3 text-[13px]">
+          {error && <p className="m-0 text-danger">{fr ? 'Buffer a refusé la demande : ' : 'Buffer refused the request: '}{error}</p>}
+          {summary && <p className="m-0 font-semibold text-ink">{summary}</p>}
+          {posts?.map(p => (
+            <div key={p.id} className="rounded-[var(--radius-md)] bg-surface-sunken px-3 py-2">
+              <p className="m-0 truncate text-ink">{p.text.slice(0, 90) || '—'}</p>
+              <p className="m-0 text-[12px] text-ink-muted">{p.channel}{p.sentAt ? ` · ${p.sentAt.slice(0, 10)}` : ''}</p>
+              <p className="m-0 mt-1 text-[12px] text-ink">
+                {p.metrics.length ? p.metrics.map(m => `${m.name || m.type} : ${m.value}`).join(' · ') : (fr ? 'aucun chiffre' : 'no figures')}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   )
 }
