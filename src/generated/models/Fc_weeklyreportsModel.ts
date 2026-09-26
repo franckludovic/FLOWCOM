@@ -15,13 +15,17 @@ export type Fc_weeklyreportsstatuscode = keyof typeof Fc_weeklyreportsstatuscode
 
 export interface Fc_weeklyreportsBase {
   fc_aianalysisjson?: string;
+  fc_analysisdata?: string;
   "fc_Company@odata.bind": string;
   fc_flowcomscore?: number;
   fc_name?: string;
+  fc_postsdata?: string;
   fc_postsjson?: string;
   fc_scorebreakdownjson?: string;
+  fc_scoresdata?: string;
   fc_weeklabel?: string;
   fc_weeklyreportid: string;
+  fc_weekstart?: string;
   importsequencenumber?: number;
   overriddencreatedon?: string;
   statecode: Fc_weeklyreportsstatecode;

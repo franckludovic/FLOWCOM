@@ -1,604 +1,405 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronLeft, ChevronRight, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useI18n } from '@/contexts/I18nContext'
 import { useCompany } from '@/contexts/CompanyContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { useBuffer, bufferQuery } from '@/contexts/BufferContext'
-import { Plus, Trash2, Save, BarChart2, Brain, Check, Loader2, History, AlertCircle, Sparkles, RefreshCw, Download } from 'lucide-react'
-import { cn } from '@/lib/utils'
 import { callModelJSON, buildModelError } from '@/lib/model'
-import { buildAiContext } from '@/lib/aiContext'
+import { buildAiContext, setReportLearnings } from '@/lib/aiContext'
+import {
+  REPORT_METRICS, SCORE_AXES, createReport, listReports, recentLearnings, scoreWeek, updateReport,
+  type ReportAnalysis, type ReportMetric, type ReportPost, type WeeklyReport,
+} from '@/lib/reports'
+import { CHANNELS, CHANNEL_MAP } from '@/lib/channels'
+import { Button, Card, CardBody, CardHeader, Spark } from '@/components/ui'
+import { cn } from '@/lib/utils'
 
-interface AnalyzedPost {
-  id: string
-  title: string
-  channel: string
-  reach: string
-  views3s: string
-  watchTime: string
-  comments: string
-  shares: string
-  saves: string
-  newFollowers: string
-  leads: string
+const DAY = 86400000
+const pad = (n: number) => String(n).padStart(2, '0')
+const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+const mondayOf = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x }
+const shiftWeek = (weekStart: string, weeks: number) => iso(new Date(new Date(`${weekStart}T00:00:00`).getTime() + weeks * 7 * DAY))
+const emptyValues = (): ReportPost['values'] => Object.fromEntries(REPORT_METRICS.map(m => [m, null])) as ReportPost['values']
+
+const COPY = {
+  fr: {
+    title: 'Rapport de la semaine', week: (a: string, b: string) => `Semaine du ${a} au ${b}`, prevWeek: 'Semaine précédente', nextWeek: 'Semaine suivante',
+    previous: (n: number) => `Rapports précédents (${n})`, jump: 'Aller à un rapport',
+    saved: 'Enregistré', saving: 'Enregistrement…', unsaved: 'Pas encore enregistré', saveError: "Le rapport n'a pas pu être enregistré",
+    learningsNote: "les leçons sont transmises à l'IA pour les prochains contenus",
+    posts: 'Posts de la semaine', complete: (n: number, t: number) => (t === 0 ? 'aucun post pour cette semaine' : n === t ? `${t} post${t > 1 ? 's' : ''}, tous complétés` : `${t} post${t > 1 ? 's' : ''} · ${t - n} à compléter`),
+    fetch: 'Actualiser la liste', add: 'Ajouter', remove: 'Retirer ce post', titlePh: 'Titre du post',
+    metrics: { reach: 'Portée', views3s: 'Vues 3 s', likes: "J'aime", comments: 'Comm.', shares: 'Partages', saves: 'Enreg.', followers: 'Abonnés', leads: 'Prosp.' } as Record<ReportMetric, string>,
+    metricsFull: { reach: 'Portée', views3s: 'Vues de 3 secondes', likes: "J'aime", comments: 'Commentaires', shares: 'Partages', saves: 'Enregistrements', followers: 'Nouveaux abonnés', leads: 'Prospects' } as Record<ReportMetric, string>,
+    fillHint: 'Recopiez les chiffres depuis les statistiques de chaque réseau. Les cases orange sont encore vides ; le rapport s’enregistre à chaque modification.',
+    noPosts: 'Aucun post publié cette semaine. Ajoutez-en un à la main si besoin.',
+    score: 'Score FlowCom', noScore: 'Saisissez au moins la portée d’un post pour calculer le score.', prevScore: (n: number, m: number) => `semaine précédente ${n}/${m}`,
+    axes: { hook: 'Accroche', shares: 'Partages', saves: 'Enregistrements', engagement: 'Engagement', growth: 'Croissance', conversion: 'Conversion' } as Record<string, string>,
+    notMeasured: 'non mesuré',
+    diagnostic: 'Diagnostic', analyze: 'Analyser', reanalyze: 'Réanalyser', analyzing: 'Analyse…', noDiagnostic: "L'IA analyse la semaine à partir des chiffres saisis, et le dit quand les données manquent.",
+    needReach: 'Saisissez la portée d’au moins un post avant l’analyse.',
+    sections: { whatWorked: 'Ce qui a marché', whatToStop: 'À arrêter', nextWeek: 'La semaine prochaine', learnings: 'À retenir' } as Record<keyof ReportAnalysis, string>,
+    loading: 'Chargement des posts…', network: 'Réseau', video: 'vidéo',
+  },
+  en: {
+    title: 'Weekly report', week: (a: string, b: string) => `Week of ${a} to ${b}`, prevWeek: 'Previous week', nextWeek: 'Next week',
+    previous: (n: number) => `Earlier reports (${n})`, jump: 'Go to a report',
+    saved: 'Saved', saving: 'Saving…', unsaved: 'Not saved yet', saveError: 'The report could not be saved',
+    learningsNote: 'lessons are passed to the AI for the next content',
+    posts: 'Posts of the week', complete: (n: number, t: number) => (t === 0 ? 'no post this week' : n === t ? `${t} post${t > 1 ? 's' : ''}, all complete` : `${t} post${t > 1 ? 's' : ''} · ${t - n} to complete`),
+    fetch: 'Refresh the list', add: 'Add', remove: 'Remove this post', titlePh: 'Post title',
+    metrics: { reach: 'Reach', views3s: '3s views', likes: 'Likes', comments: 'Comm.', shares: 'Shares', saves: 'Saves', followers: 'Followers', leads: 'Leads' } as Record<ReportMetric, string>,
+    metricsFull: { reach: 'Reach', views3s: '3-second views', likes: 'Likes', comments: 'Comments', shares: 'Shares', saves: 'Saves', followers: 'New followers', leads: 'Leads' } as Record<ReportMetric, string>,
+    fillHint: "Copy the figures from each network's statistics. Orange boxes are still empty; the report saves at every change.",
+    noPosts: 'No post published this week. Add one by hand if needed.',
+    score: 'FlowCom score', noScore: "Enter at least one post's reach to compute the score.", prevScore: (n: number, m: number) => `previous week ${n}/${m}`,
+    axes: { hook: 'Hook', shares: 'Shares', saves: 'Saves', engagement: 'Engagement', growth: 'Growth', conversion: 'Conversion' } as Record<string, string>,
+    notMeasured: 'not measured',
+    diagnostic: 'Diagnostic', analyze: 'Analyse', reanalyze: 'Analyse again', analyzing: 'Analysing…', noDiagnostic: 'The AI analyses the week from the figures entered, and says so when data is missing.',
+    needReach: "Enter at least one post's reach before the analysis.",
+    sections: { whatWorked: 'What worked', whatToStop: 'What to stop', nextWeek: 'Next week', learnings: 'Keep in mind' } as Record<keyof ReportAnalysis, string>,
+    loading: 'Loading posts…', network: 'Network', video: 'video',
+  },
 }
-
-interface ReportAnalysis {
-  whatWorked: string[]
-  whatToStop: string[]
-  adjustments: string[]
-  insights: string[]
-}
-
-interface WeeklyReport {
-  id: string
-  weekLabel: string
-  posts: AnalyzedPost[]
-  analysis: ReportAnalysis | null
-  scores: {
-    hook: number
-    retention: number
-    shares: number
-    saves: number
-    engagement: number
-    growth: number
-    conversion: number
-    total: number
-  }
-  createdAt: number
-}
-
-const emptyPost = (): AnalyzedPost => ({
-  id: crypto.randomUUID(),
-  title: '',
-  channel: 'Facebook',
-  reach: '',
-  views3s: '',
-  watchTime: '',
-  comments: '',
-  shares: '',
-  saves: '',
-  newFollowers: '',
-  leads: ''
-})
+const SECTION_DOT: Record<keyof ReportAnalysis, string> = { whatWorked: 'var(--success)', whatToStop: 'var(--danger)', nextWeek: 'var(--info)', learnings: 'var(--accent)' }
 
 export default function ReportPage() {
   const { t, lang } = useI18n()
-  const { activeCompany, products, segments, keyMessages, addKeyMessage } = useCompany()
-  const { orgId, channels: bufferChannels } = useBuffer()
-  const [history, setHistory] = useState<WeeklyReport[]>([])
-  
-  // Current editing state
-  const [reportId, setReportId] = useState<string>(crypto.randomUUID())
-  const [weekLabel, setWeekLabel] = useState('')
-  const [posts, setPosts] = useState<AnalyzedPost[]>([emptyPost()])
-  const [analysis, setAnalysis] = useState<ReportAnalysis | null>(null)
-  
-  const [analyzing, setAnalyzing] = useState(false)
-  const [importing, setImporting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [savedToMemory, setSavedToMemory] = useState(false)
+  const L: 'fr' | 'en' = lang === 'fr' ? 'fr' : 'en'
+  const c = COPY[L]
+  const locale = L === 'fr' ? 'fr-FR' : 'en-GB'
+  const { activeCompany, products, segments, keyMessages } = useCompany()
+  const { apiKeyConfigured } = useAuth()
+  const { orgId, channels } = useBuffer()
 
-  // Load history
+  // The last finished week by default.
+  const [weekStart, setWeekStart] = useState(() => shiftWeek(iso(mondayOf(new Date())), -1))
+  const [reports, setReports] = useState<WeeklyReport[]>([])
+  const [reportId, setReportId] = useState<string | null>(null)
+  const [posts, setPosts] = useState<ReportPost[]>([])
+  const [analysis, setAnalysis] = useState<ReportAnalysis | null>(null)
+  const [loadingPosts, setLoadingPosts] = useState(false)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [error, setError] = useState('')
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const dirty = useRef(false)
+  const loadedWeek = useRef('')
+
+  const weekEnd = shiftWeek(weekStart, 1)
+  const fmt = (value: string, withMonth = true) => new Date(`${value}T00:00:00`).toLocaleDateString(locale, withMonth ? { day: 'numeric', month: 'short' } : { day: 'numeric' })
+  const lastDay = iso(new Date(new Date(`${weekEnd}T00:00:00`).getTime() - DAY))
+  const currentMonday = iso(mondayOf(new Date()))
+
   useEffect(() => {
-    const raw = localStorage.getItem(`flowcom:reports:${activeCompany?.id || 'default'}`)
-    if (raw) {
-      try {
-        setHistory(JSON.parse(raw))
-      } catch {}
-    }
+    if (!activeCompany) return
+    listReports(activeCompany.id).then(setReports).catch(() => setReports([]))
   }, [activeCompany?.id])
 
-  const saveHistory = (newHistory: WeeklyReport[]) => {
-    setHistory(newHistory)
-    localStorage.setItem(`flowcom:reports:${activeCompany?.id || 'default'}`, JSON.stringify(newHistory))
-  }
+  // Posts the publishing service sent during the week. Its figures are used
+  // only when above zero: it returns zeros it does not really have.
+  const fetchWeekPosts = useCallback(async (): Promise<ReportPost[]> => {
+    if (!activeCompany || !orgId || !channels.length) return []
+    const data = await bufferQuery(activeCompany.id, `query WeekPosts($input: PostsInput!) {
+      posts(first: 100, input: $input) { edges { node { id text sentAt channelId assets { mimeType } metrics { type value } } } }
+    }`, { input: { organizationId: orgId, filter: { status: ['sent'], channelIds: channels.map(ch => ch.id) } } })
+    type Node = { id: string; text?: string; sentAt?: string; channelId: string; assets?: Array<{ mimeType?: string }>; metrics?: Array<{ type: string; value: number | string }> }
+    const edges: Array<{ node: Node }> = data?.posts?.edges ?? []
+    return edges
+      .filter(({ node }) => node.sentAt && node.sentAt.slice(0, 10) >= weekStart && node.sentAt.slice(0, 10) < weekEnd)
+      .map(({ node }) => {
+        const service = channels.find(ch => ch.id === node.channelId)?.service.toLowerCase() ?? ''
+        const values = emptyValues()
+        const put = (metric: ReportMetric, value: number) => { if (value > 0) values[metric] = Math.max(values[metric] ?? 0, value) }
+        for (const m of node.metrics ?? []) {
+          const v = Number(m.value) || 0
+          if (m.type === 'reach' || m.type === 'impressions') put('reach', v)
+          if (m.type === 'reactions' || m.type === 'likes') put('likes', v)
+          if (m.type === 'comments') put('comments', v)
+          if (m.type === 'shares' || m.type === 'reposts') put('shares', v)
+          if (m.type === 'saves') put('saves', v)
+          if (m.type === 'views' || m.type === 'video_views') put('views3s', v)
+          if (m.type === 'follows') put('followers', v)
+        }
+        return {
+          id: node.id, sourceId: node.id,
+          title: (node.text ?? '').split('\n').find(l => l.trim())?.slice(0, 80) ?? '',
+          network: service === 'x' ? 'twitter' : service,
+          date: node.sentAt!.slice(0, 10),
+          hasVideo: (node.assets ?? []).some(a => a.mimeType?.startsWith('video')),
+          values,
+        }
+      })
+  }, [activeCompany, orgId, channels, weekStart, weekEnd])
 
-  const addPost = () => setPosts([...posts, emptyPost()])
-  
-  const removePost = (id: string) => setPosts(posts.filter(p => p.id !== id))
-  
-  const updatePost = (id: string, field: keyof AnalyzedPost, value: string) => {
-    setPosts(posts.map(p => p.id === id ? { ...p, [field]: value } : p))
-  }
-
-  // Calculate scores (heuristic based)
-  const scores = (() => {
-    const s = { hook: 0, retention: 0, shares: 0, saves: 0, engagement: 0, growth: 0, conversion: 0, total: 0 }
-    if (posts.length === 0) return s
-
-    let totalReach = 0, total3s = 0, totalShares = 0, totalSaves = 0, totalComments = 0, totalFollowers = 0, totalLeads = 0
-    let videoCount = 0
-
-    posts.forEach(p => {
-      const r = parseInt(p.reach) || 0
-      totalReach += r
-      total3s += parseInt(p.views3s) || 0
-      totalShares += parseInt(p.shares) || 0
-      totalSaves += parseInt(p.saves) || 0
-      totalComments += parseInt(p.comments) || 0
-      totalFollowers += parseInt(p.newFollowers) || 0
-      totalLeads += parseInt(p.leads) || 0
-      if (p.watchTime) videoCount++
+  // Merge fetched posts into what was already typed, keeping every figure entered.
+  const mergePosts = (saved: ReportPost[], fetched: ReportPost[]) => {
+    const bySource = new Map(saved.filter(p => p.sourceId).map(p => [p.sourceId!, p]))
+    const merged = fetched.map(f => {
+      const old = bySource.get(f.sourceId!)
+      if (!old) return f
+      const values = { ...old.values }
+      for (const m of REPORT_METRICS) if (values[m] === null && f.values[m] !== null) values[m] = f.values[m]
+      return { ...old, values }
     })
+    const manual = saved.filter(p => !p.sourceId || !fetched.some(f => f.sourceId === p.sourceId))
+    return [...merged, ...manual].sort((a, b) => b.date.localeCompare(a.date))
+  }
 
-    if (totalReach === 0) return s
+  // Opening a week: its saved report, refreshed with the week's posts.
+  useEffect(() => {
+    if (!activeCompany) return
+    let alive = true
+    const saved = reports.find(r => r.weekStart === weekStart)
+    // Re-run once the connected accounts are known, so the week's posts come in.
+    const key = `${weekStart}:${orgId && channels.length ? 'ready' : 'waiting'}`
+    if (loadedWeek.current === key && saved?.id === reportId) return
+    loadedWeek.current = key
+    dirty.current = false
+    setReportId(saved?.id ?? null)
+    setPosts(saved?.posts ?? [])
+    setAnalysis(saved?.analysis ?? null)
+    setSaveState(saved ? 'saved' : 'idle')
+    setError('')
+    setLoadingPosts(true)
+    fetchWeekPosts()
+      .then(fetched => {
+        if (!alive) return
+        const next = mergePosts(saved?.posts ?? [], fetched)
+        setPosts(next)
+        if (next.length !== (saved?.posts.length ?? 0)) dirty.current = true
+      })
+      .catch(err => { if (alive) { console.warn('Publishing service:', err); } })
+      .finally(() => { if (alive) setLoadingPosts(false) })
+    return () => { alive = false }
+  }, [weekStart, reports, activeCompany?.id, fetchWeekPosts]) // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Hook: 3s views / reach (Excellent > 30%)
-    const hookRate = total3s / totalReach
-    s.hook = hookRate > 0.3 ? 5 : hookRate > 0.2 ? 4 : hookRate > 0.1 ? 3 : hookRate > 0.05 ? 2 : 1
+  const score = useMemo(() => scoreWeek(posts), [posts])
+  const previous = reports.find(r => r.weekStart === shiftWeek(weekStart, -1))
+  const previousScore = previous ? scoreWeek(previous.posts) : null
 
-    // Retention: if no video, max 3. If video, use watch time heuristic or default to 3.
-    s.retention = videoCount > 0 ? 4 : 3
+  // Saves a second after the last change.
+  useEffect(() => {
+    if (!dirty.current || !activeCompany) return
+    const timer = setTimeout(async () => {
+      dirty.current = false
+      setSaveState('saving')
+      const body = { weekStart, posts, analysis, score: score.max ? score.total : null, breakdown: score.max ? { ...Object.fromEntries(SCORE_AXES.map(a => [a, 0])), ...score.breakdown } as WeeklyReport['breakdown'] : null }
+      try {
+        if (reportId) {
+          await updateReport(reportId, body)
+          setReports(prev => prev.map(r => (r.id === reportId ? { ...r, ...body } : r)))
+        } else {
+          const created = await createReport(activeCompany.id, body)
+          setReportId(created.id)
+          setReports(prev => [created, ...prev])
+        }
+        setSaveState('saved')
+        window.dispatchEvent(new Event('flowcom:data-updated'))
+      } catch (err) {
+        console.warn('Weekly report save failed', err)
+        setSaveState('error')
+      }
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [posts, analysis]) // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Shares: shares / reach (Excellent > 1%)
-    const shareRate = totalShares / totalReach
-    s.shares = shareRate > 0.01 ? 5 : shareRate > 0.005 ? 4 : shareRate > 0.002 ? 3 : shareRate > 0.001 ? 2 : 1
+  const change = (id: string, patch: Partial<ReportPost>) => {
+    dirty.current = true
+    setPosts(prev => prev.map(p => (p.id === id ? { ...p, ...patch, values: { ...p.values, ...(patch.values ?? {}) } } : p)))
+  }
+  const setValue = (id: string, metric: ReportMetric, raw: string) => {
+    const n = raw.trim() === '' ? null : Math.max(0, Math.round(Number(raw.replace(/\s/g, ''))) || 0)
+    const post = posts.find(p => p.id === id)
+    if (post) change(id, { values: { ...post.values, [metric]: n } })
+  }
+  const addPost = () => {
+    dirty.current = true
+    setPosts(prev => [{ id: crypto.randomUUID(), title: '', network: 'facebook', date: weekStart, values: emptyValues() }, ...prev])
+  }
+  const removePost = (id: string) => { dirty.current = true; setPosts(prev => prev.filter(p => p.id !== id)) }
 
-    // Saves: saves / reach (Excellent > 2%)
-    const saveRate = totalSaves / totalReach
-    s.saves = saveRate > 0.02 ? 5 : saveRate > 0.01 ? 4 : saveRate > 0.005 ? 3 : saveRate > 0.002 ? 2 : 1
-
-    // Engagement: comments / reach (Excellent > 3%)
-    const engRate = totalComments / totalReach
-    s.engagement = engRate > 0.03 ? 5 : engRate > 0.015 ? 4 : engRate > 0.005 ? 3 : engRate > 0.001 ? 2 : 1
-
-    // Growth: followers / reach (Excellent > 1%)
-    const growRate = totalFollowers / totalReach
-    s.growth = growRate > 0.01 ? 5 : growRate > 0.005 ? 4 : growRate > 0.001 ? 3 : growRate > 0.0005 ? 2 : 1
-
-    // Conversion: leads / reach (Excellent > 0.5%)
-    const convRate = totalLeads / totalReach
-    s.conversion = convRate > 0.005 ? 5 : convRate > 0.002 ? 4 : convRate > 0.001 ? 3 : convRate > 0.0005 ? 2 : 1
-
-    s.total = s.hook + s.retention + s.shares + s.saves + s.engagement + s.growth + s.conversion
-    return s
-  })()
-
-  const runAnalysis = async () => {
-    // Check if we have data
-    const validPosts = posts.filter(p => parseInt(p.reach) > 0)
-    if (validPosts.length === 0) {
-      setError(t('report.noPosts' as any))
-      return
-    }
-
-    setAnalyzing(true)
-    setError(null)
-
-    const context = `${buildAiContext({ company: activeCompany, products, segments, keyMessages })}
-Total Score: ${scores.total}/35 (Hook:${scores.hook}, Ret:${scores.retention}, Shares:${scores.shares}, Saves:${scores.saves}, Eng:${scores.engagement}, Gro:${scores.growth}, Conv:${scores.conversion})
-
-Posts Data:
-${validPosts.map(p => `- ${p.title} (${p.channel}): Reach=${p.reach}, 3sViews=${p.views3s}, WatchTime=${p.watchTime}, Comments=${p.comments}, Shares=${p.shares}, Saves=${p.saves}, Followers=${p.newFollowers}, Leads=${p.leads}`).join('\n')}
-    `
-
-    const prompt = lang === 'fr'
-      ? `Agis comme un analyste Social Media expert. Analyse ces métriques hebdomadaires et fournis un rapport JSON strict structuré avec : "whatWorked" (liste de points), "whatToStop" (liste de points), "adjustments" (liste de points pour la semaine pro), et "insights" (apprentissages profonds sur l'audience à retenir). Sois concret et très spécifique.`
-      : `Act as an expert Social Media analyst. Analyze these weekly metrics and provide a strict JSON report structured with: "whatWorked" (array of bullet points), "whatToStop" (array of bullet points), "adjustments" (array of tweaks for next week), and "insights" (deep audience learnings to memorize). Be concrete and highly specific.`
-
+  const refreshList = async () => {
+    setLoadingPosts(true)
     try {
-      const res = await callModelJSON<ReportAnalysis>(activeCompany?.id ?? '', [
-        { role: 'system', content: prompt },
-        { role: 'user', content: context }
-      ], { temperature: 0.4, requiredKeys: ['whatWorked', 'whatToStop', 'adjustments', 'insights'] })
-      
-      setAnalysis(res)
-      setSavedToMemory(false)
-    } catch (e: any) {
-      setError(t(buildModelError(e) as any))
+      const fetched = await fetchWeekPosts()
+      dirty.current = true
+      setPosts(prev => mergePosts(prev, fetched))
+    } catch (err) {
+      console.warn('Publishing service:', err)
+    } finally {
+      setLoadingPosts(false)
+    }
+  }
+
+  const analyze = async () => {
+    if (!activeCompany) return
+    const withReach = posts.filter(p => (p.values.reach ?? 0) > 0)
+    if (!withReach.length) { setError(c.needReach); return }
+    setAnalyzing(true)
+    setError('')
+    const rows = posts.map(p => `- ${p.date} · ${p.network}${p.hasVideo ? ' (video)' : ''} · "${p.title}": ${REPORT_METRICS.map(m => `${m}=${p.values[m] ?? 'not entered'}`).join(', ')}`).join('\n')
+    const scoreLine = score.max ? `Score ${score.total}/${score.max} (${Object.entries(score.breakdown).map(([k, v]) => `${k} ${v}/5`).join(', ')})` : 'No score'
+    try {
+      const result = await callModelJSON<ReportAnalysis>(activeCompany.id, [
+        { role: 'system', content: `You are a social media analyst reviewing one week of organic posts. Use ONLY the figures given; "not entered" means unknown, not zero. Return JSON {"whatWorked":["..."],"whatToStop":["..."],"nextWeek":["..."],"learnings":["..."]}, 1 to 3 short points each (max 20 words), each citing the figure or post it comes from. "learnings" are durable lessons about this audience that should guide future content. If the data is too thin to judge, say so in whatWorked and keep the other lists short. Write in ${L === 'fr' ? 'French' : 'English'}, never quote field names like "reach=".\nCompany context:\n${buildAiContext({ company: activeCompany, products, segments, keyMessages })}` },
+        { role: 'user', content: `Week ${weekStart} to ${lastDay}\n${scoreLine}\nPosts:\n${rows}` },
+      ], { temperature: 0.3, max_tokens: 900, requiredKeys: ['whatWorked', 'whatToStop', 'nextWeek', 'learnings'] })
+      const clean = (list: unknown) => (Array.isArray(list) ? list.filter((s): s is string => typeof s === 'string' && Boolean(s.trim())).slice(0, 3) : [])
+      const next = { whatWorked: clean(result.whatWorked), whatToStop: clean(result.whatToStop), nextWeek: clean(result.nextWeek), learnings: clean(result.learnings) }
+      dirty.current = true
+      setAnalysis(next)
+      setReportLearnings(recentLearnings([{ weekStart, analysis: next } as WeeklyReport, ...reports.filter(r => r.weekStart !== weekStart)]))
+    } catch (err) {
+      setError(t(buildModelError(err) as Parameters<typeof t>[0]))
     } finally {
       setAnalyzing(false)
     }
   }
 
-  const importFromBuffer = async () => {
-    if (!activeCompany || !orgId) {
-      alert(lang === 'fr' ? 'Les réseaux sociaux ne sont pas encore connectés. Contactez votre gestionnaire FlowCom.' : 'Social networks are not connected yet. Contact your FlowCom manager.')
-      return
-    }
-    setImporting(true)
-    setError(null)
-    try {
-      // org + channels already in context - only fetch posts
-      const postsData = await bufferQuery(activeCompany.id, `
-        query GetPostsWithMetrics($orgId: OrganizationId!) {
-          posts(
-            first: 10
-            input: {
-              organizationId: $orgId
-              filter: { status: [sent] }
-            }
-          ) {
-            edges {
-              node {
-                id
-                text
-                channelId
-                metrics {
-                  type
-                  name
-                  value
-                }
-              }
-            }
-          }
-        }
-      `, { orgId })
-
-      const edges = postsData?.posts?.edges || []
-      const importedPosts: AnalyzedPost[] = edges.map((edge: any) => {
-        const node = edge.node
-        const ch = bufferChannels.find((c: any) => c.id === node.channelId)
-        
-        let reach = 0, comments = 0, shares = 0, saves = 0, views3s = 0, likes = 0, follows = 0
-        ;(node.metrics || []).forEach((m: any) => {
-          const val = parseInt(m.value) || 0
-          // Use m.type (stable enum) for programmatic matching, not m.name (display label)
-          // reactions: Instagram likes, Twitter likes, Mastodon favorites, all Facebook reaction types combined
-          // likes: Facebook Like subcount only (distinct from reactions which sums all FB reaction types)
-          // reposts: Twitter retweets, Mastodon reblogs, Threads reposts
-          // shares: explicit share/forward actions (distinct from reposts)
-          // views: normalized video view count (replaces deprecated video_views)
-          // follows: new followers attributed to the post (Instagram)
-          if (m.type === 'impressions' || m.type === 'reach') reach = Math.max(reach, val)
-          if (m.type === 'reactions' || m.type === 'likes') likes += val
-          if (m.type === 'comments') comments += val
-          if (m.type === 'reposts' || m.type === 'shares') shares += val
-          if (m.type === 'saves') saves += val
-          if (m.type === 'views' || m.type === 'video_views') views3s += val
-          if (m.type === 'follows') follows += val
-        })
-
-        const title = (node.text || '').substring(0, 30) + '...'
-        
-        return {
-          id: crypto.randomUUID(),
-          title: title,
-          channel: ch?.service ? ch.service.charAt(0).toUpperCase() + ch.service.slice(1) : 'Facebook',
-          reach: reach.toString(),
-          views3s: views3s ? views3s.toString() : '',
-          watchTime: '',
-          comments: comments.toString(),
-          shares: shares.toString(),
-          saves: saves.toString(),
-          newFollowers: follows ? follows.toString() : '',
-          leads: ''
-        }
-      })
-
-      if (importedPosts.length === 0) {
-        alert(lang === 'fr' ? 'Aucun post publié trouvé.' : 'No sent posts found.')
-        return
-      }
-
-      // Check if metrics came back empty (app token limitation)
-      const hasMetrics = importedPosts.some(p => parseInt(p.reach) > 0 || parseInt(p.comments) > 0)
-      if (!hasMetrics) {
-        setError(lang === 'fr'
-          ? 'Posts importés sans métriques. Les métriques nécessitent une clé API personnelle Buffer (pas un token d\'application).'
-          : 'Posts imported but without metrics. Metrics require a Buffer personal API key - app tokens only return post text.')
-      }
-
-      setPosts(importedPosts)
-      
-    } catch (e: any) {
-      console.error(e)
-      setError(e.message)
-    } finally {
-      setImporting(false)
-    }
-  }
-
-  const saveReport = () => {
-    if (!weekLabel) return
-    const report: WeeklyReport = {
-      id: reportId,
-      weekLabel,
-      posts,
-      analysis,
-      scores,
-      createdAt: Date.now()
-    }
-    
-    const existing = history.findIndex(h => h.id === reportId)
-    const newHistory = [...history]
-    if (existing >= 0) newHistory[existing] = report
-    else newHistory.unshift(report)
-    
-    saveHistory(newHistory)
-    alert(t('report.saved' as any))
-  }
-
-  const loadReport = (report: WeeklyReport) => {
-    setReportId(report.id)
-    setWeekLabel(report.weekLabel)
-    setPosts(report.posts)
-    setAnalysis(report.analysis)
-    setSavedToMemory(false)
-    setError(null)
-  }
-
-  const startNew = () => {
-    setReportId(crypto.randomUUID())
-    setWeekLabel('')
-    setPosts([emptyPost()])
-    setAnalysis(null)
-    setSavedToMemory(false)
-    setError(null)
-  }
-
-  const saveToMemory = async () => {
-    if (!analysis?.insights || analysis.insights.length === 0) return
-    try {
-      const content = `Weekly Report Insights (${weekLabel}):\n` + analysis.insights.map(i => `- ${i}`).join('\n')
-      await addKeyMessage(content)
-      setSavedToMemory(true)
-    } catch (e) {
-      alert('Error saving to memory')
-    }
-  }
+  const completeCount = posts.filter(p => p.values.reach !== null).length
+  const saveLabel = saveState === 'saving' ? c.saving : saveState === 'saved' ? c.saved : saveState === 'error' ? c.saveError : c.unsaved
+  const others = reports.filter(r => r.weekStart !== weekStart)
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-[var(--color-bg)]">
-      {/* Header */}
-      <div className="flex-none p-6 border-b border-[var(--color-border)] flex justify-between items-start">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-xs font-bold px-2 py-1 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400 rounded-md">
-              {t('report.badge' as any)}
-            </span>
-          </div>
-          <h1 className="text-2xl font-bold text-[var(--color-text)] mb-2">{t('report.title' as any)}</h1>
-          <p className="text-[var(--color-text-muted)] max-w-3xl">
-            {t('report.subtitle' as any)}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="relative group">
-            <button className="px-4 py-2 bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] rounded-lg font-medium hover:bg-[var(--color-surface-hover)] flex items-center gap-2 transition-colors">
-              <History className="w-4 h-4" />
-              {t('report.history' as any)}
-            </button>
-            {/* History Dropdown */}
-            <div className="absolute right-0 mt-2 w-64 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10 p-2 max-h-96 overflow-y-auto">
-              <button onClick={startNew} className="w-full text-left px-3 py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg mb-2">
-                + {t('report.newReport' as any)}
-              </button>
-              {history.length === 0 && (
-                <div className="px-3 py-4 text-center text-sm text-[var(--color-text-muted)]">
-                  {t('report.empty' as any)}
-                </div>
-              )}
-              {history.map(h => (
-                <button
-                  key={h.id}
-                  onClick={() => loadReport(h)}
-                  className={cn(
-                    "w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-[var(--color-bg)] transition-colors mb-1 truncate",
-                    h.id === reportId ? "bg-[var(--color-bg)] font-bold" : "text-[var(--color-text)]"
-                  )}
-                >
-                  {h.weekLabel || 'Untitled'} - {h.scores.total}/35
-                </button>
-              ))}
-            </div>
-          </div>
-          <button 
-            onClick={saveReport}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 flex items-center gap-2 transition-colors"
-          >
-            <Save className="w-4 h-4" />
-            {t('report.save' as any)}
-          </button>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-7xl mx-auto grid grid-cols-1 xl:grid-cols-12 gap-8">
-          
-          {/* Left Column: Data Entry */}
-          <div className="xl:col-span-7 space-y-6">
-            <div className="bg-[var(--color-surface)] border border-[var(--color-border)] p-5 rounded-xl shadow-sm">
-              <label className="block text-sm font-semibold text-[var(--color-text)] mb-2">
-                {t('report.weekLabel' as any)}
-              </label>
-              <input 
-                type="text" 
-                value={weekLabel}
-                onChange={e => setWeekLabel(e.target.value)}
-                placeholder={t('report.weekPh' as any)}
-                className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg px-4 py-2.5 text-[var(--color-text)] outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
-              />
-            </div>
-
-            <div className="space-y-4">
-              {posts.map((post, index) => (
-                <div key={post.id} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl overflow-hidden shadow-sm">
-                  <div className="px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-bg)] flex justify-between items-center">
-                    <span className="font-bold text-[var(--color-text)] text-sm">Post #{index + 1}</span>
-                    {posts.length > 1 && (
-                      <button onClick={() => removePost(post.id)} className="text-red-500 hover:text-red-600 p-1 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                  <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="sm:col-span-2 flex gap-4">
-                      <div className="flex-1">
-                        <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase mb-1">{t('report.postTitle' as any)}</label>
-                        <input type="text" value={post.title} onChange={e => updatePost(post.id, 'title', e.target.value)} placeholder={t('report.postTitlePh' as any)} className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded-md px-3 py-2 text-sm outline-none focus:border-indigo-500" />
-                      </div>
-                      <div className="w-1/3">
-                        <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase mb-1">{t('report.channel' as any)}</label>
-                        <select value={post.channel} onChange={e => updatePost(post.id, 'channel', e.target.value)} className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded-md px-3 py-2 text-sm outline-none focus:border-indigo-500">
-                          <option>Facebook</option><option>Instagram</option><option>LinkedIn</option><option>TikTok</option>
-                        </select>
-                      </div>
-                    </div>
-                    {/* Metrics Grid */}
-                    {[
-                      { key: 'reach', label: t('report.reach' as any) },
-                      { key: 'views3s', label: t('report.views3s' as any) },
-                      { key: 'watchTime', label: t('report.watchTime' as any), ph: t('report.watchTimePh' as any) },
-                      { key: 'comments', label: t('report.comments' as any) },
-                      { key: 'shares', label: t('report.shares' as any) },
-                      { key: 'saves', label: t('report.saves' as any) },
-                      { key: 'newFollowers', label: t('report.newFollowers' as any) },
-                      { key: 'leads', label: t('report.leads' as any) },
-                    ].map(field => (
-                      <div key={field.key}>
-                        <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase mb-1 truncate">{field.label}</label>
-                        <input type={field.key === 'watchTime' ? 'text' : 'number'} value={(post as any)[field.key]} onChange={e => updatePost(post.id, field.key as keyof AnalyzedPost, e.target.value)} placeholder={field.ph || '0'} className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded-md px-3 py-2 text-sm outline-none focus:border-indigo-500" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            <div className="flex gap-4">
-              <button onClick={addPost} className="flex-1 py-3 border-2 border-dashed border-[var(--color-border)] rounded-xl text-[var(--color-text-muted)] font-medium hover:text-indigo-600 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors flex items-center justify-center gap-2">
-                <Plus className="w-5 h-5" />
-                {t('report.addPost' as any)}
-              </button>
-              <button 
-                onClick={importFromBuffer}
-                disabled={importing}
-                className="flex-1 py-3 border-2 border-dashed border-[var(--color-border)] rounded-xl text-[var(--color-text-muted)] font-medium hover:text-blue-600 hover:border-blue-300 dark:hover:border-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {importing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-                {lang === 'fr' ? 'Auto-importer depuis Buffer' : 'Auto-import from Buffer'}
-              </button>
-            </div>
-            {/* Personal key notice */}
-            <p className="text-[10px] text-[var(--color-text-muted)] flex items-start gap-1.5 leading-relaxed">
-              <span className="shrink-0 mt-0.5">ℹ️</span>
-              {lang === 'fr'
-                ? 'L\'import automatique nécessite une clé API personnelle Buffer (pas un token d\'application). Les métriques (likes, portée…) ne sont disponibles qu\'avec une clé personnelle.'
-                : 'Auto-import requires a Buffer personal API key (not an app token). Metrics (likes, reach…) are only available with a personal key - app tokens return posts without metric data.'}
+    <div className="min-h-full bg-surface-page">
+      <div className="mx-auto flex max-w-[var(--content-max)] flex-col gap-3.5 px-4 py-5 sm:px-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="m-0 text-[22px] font-bold leading-7 text-ink sm:text-[24px] sm:leading-[30px]" style={{ fontFamily: 'var(--font-display)' }}>{c.title}</h1>
+            <p className={cn('m-0 mt-0.5 text-sm', saveState === 'error' ? 'text-danger' : 'text-ink-muted')}>
+              {saveLabel}{saveState === 'saved' && analysis?.learnings.length ? ` · ${c.learningsNote}` : ''}
             </p>
           </div>
-
-          {/* Right Column: Score & AI */}
-          <div className="xl:col-span-5 space-y-6">
-            
-            {/* FlowCom Score Card */}
-            <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl overflow-hidden shadow-sm">
-              <div className="p-6 border-b border-[var(--color-border)] bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex justify-between items-end">
-                <div>
-                  <p className="text-indigo-100 font-semibold mb-1 uppercase tracking-wider text-sm">{t('report.score' as any)}</p>
-                  <div className="text-5xl font-black">{scores.total}<span className="text-2xl text-indigo-200 font-bold">{t('report.scoreTotal' as any)}</span></div>
-                </div>
-                <BarChart2 className="w-12 h-12 opacity-50" />
-              </div>
-              <div className="p-4 grid grid-cols-2 gap-y-4 gap-x-2">
-                {[
-                  { label: t('report.scHook' as any), val: scores.hook },
-                  { label: t('report.scRetention' as any), val: scores.retention },
-                  { label: t('report.scShares' as any), val: scores.shares },
-                  { label: t('report.scSaves' as any), val: scores.saves },
-                  { label: t('report.scEngagement' as any), val: scores.engagement },
-                  { label: t('report.scGrowth' as any), val: scores.growth },
-                  { label: t('report.scConversion' as any), val: scores.conversion },
-                ].map((s, i) => (
-                  <div key={i} className="flex flex-col">
-                    <span className="text-xs text-[var(--color-text-muted)] font-semibold uppercase truncate">{s.label}</span>
-                    <div className="flex items-center gap-1 mt-1">
-                      {[1,2,3,4,5].map(star => (
-                        <div key={star} className={cn("h-1.5 flex-1 rounded-full", star <= s.val ? "bg-indigo-600" : "bg-[var(--color-border)]")} />
-                      ))}
-                      <span className="text-xs font-bold w-4 text-right text-[var(--color-text)]">{s.val}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex items-center gap-0.5 rounded-[var(--radius-md)] border border-line-strong bg-surface-card p-0.5">
+              <Button variant="ghost" size="sm" iconOnly icon={<ChevronLeft />} aria-label={c.prevWeek} onClick={() => setWeekStart(w => shiftWeek(w, -1))} />
+              <span className="min-w-[180px] text-center text-[13px] font-bold text-ink" style={{ fontFamily: 'var(--font-display)' }}>{c.week(fmt(weekStart, weekStart.slice(5, 7) !== lastDay.slice(5, 7)), fmt(lastDay))}</span>
+              <Button variant="ghost" size="sm" iconOnly icon={<ChevronRight />} aria-label={c.nextWeek} disabled={weekStart >= currentMonday} onClick={() => setWeekStart(w => shiftWeek(w, 1))} />
             </div>
+            {others.length > 0 && (
+              <select className="fc-input h-8 w-auto" aria-label={c.jump} value="" onChange={e => e.target.value && setWeekStart(e.target.value)}>
+                <option value="">{c.previous(others.length)}</option>
+                {others.map(r => <option key={r.id} value={r.weekStart}>{c.week(fmt(r.weekStart), fmt(iso(new Date(new Date(`${r.weekStart}T00:00:00`).getTime() + 6 * DAY))))}{r.score !== null ? ` · ${r.score}` : ''}</option>)}
+              </select>
+            )}
+          </div>
+        </div>
 
-            {/* AI Analysis Panel */}
-            <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-sm overflow-hidden">
-              <div className="p-5 border-b border-[var(--color-border)] flex justify-between items-center bg-[var(--color-bg)]">
-                <div className="flex items-center gap-2 font-bold text-[var(--color-text)]">
-                  <Brain className="w-5 h-5 text-indigo-600" />
-                  Diagnostic IA
-                </div>
-                <button 
-                  onClick={runAnalysis}
-                  disabled={analyzing}
-                  className="px-3 py-1.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400 text-sm font-semibold rounded-lg hover:bg-indigo-200 dark:hover:bg-indigo-900/60 transition-colors flex items-center gap-2 disabled:opacity-50"
-                >
-                  {analyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                  {t('report.analyze' as any)}
-                </button>
-              </div>
+        {error && <p className="m-0 rounded-[var(--radius-md)] bg-danger-soft px-3 py-2 text-[13px] text-danger">{error}</p>}
 
-              {error && (
-                <div className="p-4 bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 text-sm border-b border-red-100 dark:border-red-900/50 flex gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  {error}
+        <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          <Card className="min-w-0">
+            <CardHeader title={c.posts} subtitle={loadingPosts ? c.loading : c.complete(completeCount, posts.length)} actions={<>
+              <Button variant="ghost" size="sm" icon={<RefreshCw className={cn(loadingPosts && 'animate-spin')} />} disabled={loadingPosts || !orgId} onClick={() => void refreshList()}>{c.fetch}</Button>
+              <Button variant="ghost" size="sm" icon={<Plus />} onClick={addPost}>{c.add}</Button>
+            </>} />
+            <CardBody className="pt-2">
+              {loadingPosts && !posts.length ? (
+                <p className="m-0 flex items-center gap-2 py-6 text-[13px] text-ink-muted"><Loader2 className="h-4 w-4 animate-spin" />{c.loading}</p>
+              ) : !posts.length ? (
+                <p className="m-0 py-6 text-center text-[13px] text-ink-muted">{c.noPosts}</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px] border-collapse text-[13px]">
+                    <thead>
+                      <tr className="border-b border-line text-[10px] font-bold uppercase tracking-[0.05em] text-ink-muted">
+                        <th className="py-1.5 pr-2 text-left">Post</th>
+                        {REPORT_METRICS.map(m => <th key={m} className="w-[64px] px-0.5 py-1.5 text-right" title={c.metricsFull[m]}>{c.metrics[m]}</th>)}
+                        <th className="w-8" aria-hidden="true" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {posts.map(post => {
+                        const def = CHANNEL_MAP[post.network]
+                        return (
+                          <tr key={post.id} className="border-b border-line last:border-b-0">
+                            <td className="py-1.5 pr-2">
+                              <div className="flex min-w-0 items-center gap-2">
+                                {post.sourceId ? (def && <def.icon className="h-3.5 w-3.5 shrink-0" style={{ color: def.color }} />) : (
+                                  <select aria-label={c.network} className="fc-input h-7 w-[92px] shrink-0 px-1.5 text-[12px]" value={post.network} onChange={e => change(post.id, { network: e.target.value })}>
+                                    {CHANNELS.slice(0, 7).map(ch => <option key={ch.value} value={ch.value}>{ch.label}</option>)}
+                                  </select>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  {post.sourceId ? <span className="block truncate text-ink">{post.title || '—'}</span>
+                                    : <input className="fc-input h-7 text-[12px]" aria-label={c.titlePh} placeholder={c.titlePh} value={post.title} onChange={e => change(post.id, { title: e.target.value })} />}
+                                  {post.sourceId && <span className="block text-[11px] text-ink-muted">{fmt(post.date)}{post.hasVideo ? ` · ${c.video}` : ''}</span>}
+                                </div>
+                              </div>
+                            </td>
+                            {REPORT_METRICS.map(m => {
+                              const empty = post.values[m] === null
+                              const optional = m === 'views3s' && !post.hasVideo
+                              return (
+                                <td key={m} className="px-0.5 py-1.5">
+                                  <input inputMode="numeric" aria-label={`${c.metricsFull[m]} · ${post.title || c.titlePh}`}
+                                    className={cn('fc-input tabular-nums', empty && !optional && 'border-warning bg-warning-soft')}
+                                    style={{ height: 30, padding: '0 6px', textAlign: 'right', ...(empty && !optional ? { borderColor: 'var(--warning)', background: 'var(--warning-soft)' } : {}) }}
+                                    value={post.values[m] ?? ''} placeholder="—" onChange={e => setValue(post.id, m, e.target.value)} />
+                                </td>
+                              )
+                            })}
+                            <td className="py-1.5 pl-0.5">
+                              <Button variant="ghost" size="sm" iconOnly icon={<Trash2 />} aria-label={c.remove} onClick={() => removePost(post.id)} />
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
+              {posts.length > 0 && <p className="m-0 mt-2.5 text-[12px] text-ink-muted">{c.fillHint}</p>}
+            </CardBody>
+          </Card>
 
-              <div className="p-5">
-                {analyzing ? (
-                  <div className="space-y-4 animate-pulse">
-                    <div className="h-4 bg-[var(--color-border)] rounded w-1/3 mb-2"></div>
-                    <div className="h-3 bg-[var(--color-border)] rounded w-full"></div>
-                    <div className="h-3 bg-[var(--color-border)] rounded w-5/6"></div>
-                    <div className="h-3 bg-[var(--color-border)] rounded w-4/6 mb-4"></div>
-                  </div>
-                ) : analysis ? (
-                  <div className="space-y-6">
+          <div className="flex min-w-0 flex-col gap-3.5">
+            <Card>
+              <CardHeader title={c.score} actions={previousScore?.max ? <span className="text-[12px] text-ink-muted">{c.prevScore(previousScore.total, previousScore.max)}</span> : undefined} />
+              <CardBody>
+                {!score.max ? <p className="m-0 text-[13px] text-ink-muted">{c.noScore}</p> : (
+                  <div className="grid grid-cols-[92px_minmax(0,1fr)] items-center gap-3.5">
                     <div>
-                      <h4 className="text-sm font-bold text-green-600 dark:text-green-400 uppercase mb-2 flex items-center gap-2">
-                        <Check className="w-4 h-4" /> {t('report.aiWhatWorked' as any)}
-                      </h4>
-                      <ul className="list-disc list-inside text-sm text-[var(--color-text)] space-y-1">
-                        {analysis.whatWorked.map((item, i) => <li key={i}>{item}</li>)}
-                      </ul>
+                      <span className="text-[36px] font-bold leading-10 text-ink" style={{ fontFamily: 'var(--font-display)' }}>{score.total}</span>
+                      <span className="text-base font-bold text-ink-muted" style={{ fontFamily: 'var(--font-display)' }}>/{score.max}</span>
+                      {previousScore?.max ? (() => {
+                        const diff = Math.round((score.total / score.max - previousScore.total / previousScore.max) * 30)
+                        return <span className={cn('block text-[12px] font-semibold', diff >= 0 ? 'text-success' : 'text-danger')}>{diff >= 0 ? '+' : '−'}{Math.abs(diff)}</span>
+                      })() : null}
                     </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-red-500 uppercase mb-2 flex items-center gap-2">
-                        <Trash2 className="w-4 h-4" /> {t('report.aiWhatToStop' as any)}
-                      </h4>
-                      <ul className="list-disc list-inside text-sm text-[var(--color-text)] space-y-1">
-                        {analysis.whatToStop.map((item, i) => <li key={i}>{item}</li>)}
-                      </ul>
+                    <div className="flex flex-col gap-1.5">
+                      {SCORE_AXES.map(axis => {
+                        const v = score.breakdown[axis]
+                        return (
+                          <div key={axis} className="grid grid-cols-[100px_minmax(0,1fr)_28px] items-center gap-2 text-[12px]">
+                            <span className="text-ink-muted">{c.axes[axis]}</span>
+                            <span className="h-1.5 overflow-hidden rounded-full bg-surface-sunken" aria-hidden="true"><span className="block h-full rounded-full bg-brand" style={{ width: `${(v ?? 0) * 20}%` }} /></span>
+                            <span className={cn('text-right', v ? 'font-bold text-ink' : 'text-[11px] text-ink-subtle')}>{v ?? '—'}</span>
+                          </div>
+                        )
+                      })}
+                      {Object.keys(score.breakdown).length < SCORE_AXES.length && <span className="text-[11px] text-ink-subtle">— {c.notMeasured}</span>}
                     </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-amber-500 uppercase mb-2 flex items-center gap-2">
-                        <RefreshCw className="w-4 h-4" /> {t('report.aiAdjustments' as any)}
-                      </h4>
-                      <ul className="list-disc list-inside text-sm text-[var(--color-text)] space-y-1">
-                        {analysis.adjustments.map((item, i) => <li key={i}>{item}</li>)}
-                      </ul>
-                    </div>
-                    
-                    <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-100 dark:border-indigo-900/50">
-                      <h4 className="text-sm font-bold text-indigo-700 dark:text-indigo-400 uppercase mb-2 flex items-center gap-2">
-                        <Brain className="w-4 h-4" /> {t('report.aiInsights' as any)}
-                      </h4>
-                      <ul className="list-disc list-inside text-sm text-indigo-900 dark:text-indigo-200 space-y-1 mb-4">
-                        {analysis.insights.map((item, i) => <li key={i}>{item}</li>)}
-                      </ul>
-                      <button 
-                        onClick={saveToMemory}
-                        disabled={savedToMemory}
-                        className="w-full py-2 bg-white dark:bg-[var(--color-surface)] border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-400 font-medium rounded-md text-sm hover:bg-indigo-50 dark:hover:bg-[var(--color-bg)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {savedToMemory ? t('report.aiSavedToMemory' as any) : "Save Insights to AI Memory"}
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-[var(--color-text-muted)]">
-                    <BarChart2 className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                    <p className="text-sm max-w-[250px] mx-auto">
-                      {t('report.empty' as any)}
-                    </p>
                   </div>
                 )}
-              </div>
-            </div>
+              </CardBody>
+            </Card>
 
+            <Card>
+              <CardHeader title={c.diagnostic} actions={apiKeyConfigured && (
+                <Button variant="ghost" size="sm" icon={<Spark />} loading={analyzing} disabled={analyzing || !posts.length} onClick={() => void analyze()}>
+                  {analyzing ? c.analyzing : analysis ? c.reanalyze : c.analyze}
+                </Button>
+              )} />
+              <CardBody className="flex flex-col gap-3 text-[13px] leading-[19px]">
+                {!analysis ? <p className="m-0 text-ink-muted">{c.noDiagnostic}</p> : (Object.keys(c.sections) as Array<keyof ReportAnalysis>).map(key => analysis[key].length > 0 && (
+                  <div key={key}>
+                    <p className="m-0 mb-1 flex items-center gap-1.5 font-bold text-ink"><span className="h-2 w-2 rounded-full" style={{ background: SECTION_DOT[key] }} aria-hidden="true" />{c.sections[key]}</p>
+                    <ul className="m-0 flex flex-col gap-0.5 pl-[18px] text-ink-muted">{analysis[key].map(item => <li key={item}>{item}</li>)}</ul>
+                  </div>
+                ))}
+              </CardBody>
+            </Card>
           </div>
         </div>
       </div>

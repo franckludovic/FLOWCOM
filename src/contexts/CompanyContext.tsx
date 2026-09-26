@@ -17,6 +17,8 @@ import {
   replaceDataverseSegments,
   updateDataverseCompany,
 } from '@/lib/dataverse'
+import { setReportLearnings } from '@/lib/aiContext'
+import { listReports, recentLearnings } from '@/lib/reports'
 import { useAuth } from './AuthContext'
 import type { Company, Product, AudienceSegment, KeyMessage } from '@/types'
 
@@ -87,6 +89,15 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshApiKeyStatus(activeCompany?.id ?? null)
   }, [activeCompany?.id, refreshApiKeyStatus])
+
+  // The latest weekly reports' lessons go into every AI request.
+  useEffect(() => {
+    setReportLearnings([])
+    if (!activeCompany) return
+    let alive = true
+    listReports(activeCompany.id).then(r => { if (alive) setReportLearnings(recentLearnings(r)) }).catch(() => {})
+    return () => { alive = false }
+  }, [activeCompany?.id])
 
   useEffect(() => {
     if (activeCompany) fetchCompanyData(activeCompany.id)

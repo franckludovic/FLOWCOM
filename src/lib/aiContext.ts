@@ -1,5 +1,10 @@
 import type { AudienceSegment, Company, KeyMessage, Product } from '@/types'
 
+// Lessons from the latest weekly reports, loaded once per company (see
+// CompanyContext) and added to every AI request.
+let reportLearnings: string[] = []
+export function setReportLearnings(list: string[]) { reportLearnings = list }
+
 interface AiContextInput {
   company: Company | null
   products: Product[]
@@ -41,6 +46,10 @@ export function buildAiContext({ company, products, segments, keyMessages }: AiC
 
   if (keyMessages.length) {
     lines.push(`Key messages:\n${keyMessages.map(message => `- ${message.content}`).join('\n')}`)
+  }
+
+  if (reportLearnings.length) {
+    lines.push(`Lessons from recent weekly reports (apply them):\n${reportLearnings.map(l => `- ${l}`).join('\n')}`)
   }
 
   return lines.join('\n') || 'No company context has been configured yet.'

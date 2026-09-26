@@ -90,6 +90,14 @@
           "x-ms-schema-name": "fc_AIanalysisJSON",
           "maxLength": 4000
         },
+        "fc_analysisdata": {
+          "type": "string",
+          "title": "AI diagnostic (JSON)",
+          "x-ms-dataverse-attribute": "fc_analysisdata",
+          "x-ms-dataverse-type": "MemoType",
+          "x-ms-schema-name": "fc_Analysisdata",
+          "maxLength": 20000
+        },
         "fc_company": {
           "type": "string",
           "title": "Company",
@@ -127,6 +135,14 @@
           "x-ms-dataverse-primary-name": true,
           "maxLength": 850
         },
+        "fc_postsdata": {
+          "type": "string",
+          "title": "Posts (JSON)",
+          "x-ms-dataverse-attribute": "fc_postsdata",
+          "x-ms-dataverse-type": "MemoType",
+          "x-ms-schema-name": "fc_Postsdata",
+          "maxLength": 100000
+        },
         "fc_postsjson": {
           "type": "string",
           "title": "Posts JSON",
@@ -141,6 +157,14 @@
           "x-ms-dataverse-attribute": "fc_scorebreakdownjson",
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "fc_ScorebreakdownJSON",
+          "maxLength": 4000
+        },
+        "fc_scoresdata": {
+          "type": "string",
+          "title": "Score breakdown (JSON)",
+          "x-ms-dataverse-attribute": "fc_scoresdata",
+          "x-ms-dataverse-type": "MemoType",
+          "x-ms-schema-name": "fc_Scoresdata",
           "maxLength": 4000
         },
         "fc_weeklabel": {
@@ -160,6 +184,13 @@
           "x-ms-dataverse-primary-id": true,
           "required": true,
           "x-ms-keyType": "primary"
+        },
+        "fc_weekstart": {
+          "type": "string",
+          "title": "Week start",
+          "x-ms-dataverse-attribute": "fc_weekstart",
+          "x-ms-dataverse-type": "DateTimeType",
+          "x-ms-schema-name": "fc_Weekstart"
         },
         "importsequencenumber": {
           "type": "string",
