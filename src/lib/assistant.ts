@@ -47,6 +47,8 @@ export interface AssistantContext {
   model?: string
   // 'low' keeps everyday questions fast; the weekly digest uses 'medium'.
   effort?: 'low' | 'medium' | 'high'
+  // Tools of the installation's enabled modules; others are neither offered nor run.
+  tools?: Set<string>
   // Per-question cache so repeated lookups (campaigns, zones, content) hit Dataverse once.
   cache?: Map<string, Promise<unknown>>
 }
@@ -118,6 +120,7 @@ async function campaignSummaries(ctx: AssistantContext): Promise<Array<Campaign 
 type ToolRun = { result: unknown; source?: string; block?: AssistantBlock }
 
 async function runTool(name: string, args: Record<string, unknown>, ctx: AssistantContext): Promise<ToolRun> {
+  if (ctx.tools && !ctx.tools.has(name)) return { result: { error: `The ${name} tool is not part of this installation's modules.` } }
   const companyId = ctx.company.id
   switch (name) {
     case 'get_company_context':
@@ -337,7 +340,8 @@ export async function askAssistant(
   const sources: string[] = []
 
   for (let step = 0; step < MAX_STEPS; step++) {
-    const reply = await callModelWithTools(ctx.company.id, messages, TOOLS, { max_tokens: 3000, model: ctx.model, reasoning_effort: ctx.effort ?? 'low' })
+    const tools = ctx.tools ? TOOLS.filter(t => ctx.tools!.has(t.function.name)) : TOOLS
+    const reply = await callModelWithTools(ctx.company.id, messages, tools, { max_tokens: 3000, model: ctx.model, reasoning_effort: ctx.effort ?? 'low' })
     if (!reply.tool_calls.length) {
       const recovered = await recoverInlineToolCalls(reply.content.trim(), ctx)
       blocks.push(...recovered.blocks)

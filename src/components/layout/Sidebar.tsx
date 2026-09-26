@@ -1,228 +1,126 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import {
-  LayoutDashboard, UserCircle, Brain, CalendarDays,
-  FileText, BookOpen, Map, BarChart2, Zap, History, Megaphone,
-  ChevronLeft, ChevronRight, Building2, X, Send
-} from 'lucide-react'
+import { Building2, ChevronsLeft, ChevronsRight, X } from 'lucide-react'
 import { useI18n } from '@/contexts/I18nContext'
 import { useCompany } from '@/contexts/CompanyContext'
+import { useTheme } from '@/contexts/ThemeContext'
+import { useAppSettings } from '@/contexts/AppSettingsContext'
+import { navigation } from '@/modules/registry'
 import { cn } from '@/lib/utils'
 
-const SIDEBAR_STORAGE_KEY = 'flowcom:sidebar_collapsed'
-
-const navItems = [
-  { to: '/workspace',   icon: LayoutDashboard, labelKey: 'nav.workspace' },
-  { to: '/campaigns',   icon: Megaphone,       labelKey: 'nav.campaigns' },
-  { to: '/calendar',    icon: CalendarDays,    labelKey: 'nav.calendar' },
-  { to: '/content',     icon: FileText,        labelKey: 'nav.content' },
-  { to: '/library',     icon: BookOpen,        labelKey: 'nav.library' },
-  { to: '/studio',      icon: Send,            labelKey: 'nav.studio' },
-  { to: '/roadmap',     icon: Map,             labelKey: 'nav.roadmap' },
-  { to: '/report',      icon: BarChart2,       labelKey: 'nav.report' },
-  { to: '/publishing-history', icon: History,   labelKey: 'nav.publishingHistory' },
-] as const
+const COLLAPSED_KEY = 'flowcom:sidebar_collapsed'
 
 interface SidebarProps {
   mobileOpen: boolean
   onCloseMobile: () => void
 }
 
+// The installation's logo for the current mode, else its product name.
+function Brand({ compact }: { compact: boolean }) {
+  const { settings, theme } = useTheme()
+  const logo = theme === 'dark' ? settings.logoDark || settings.logoLight : settings.logoLight
+  const name = settings.productName || 'FlowCom'
+  if (logo) return <img src={logo} alt={name} className={cn('object-contain', compact ? 'h-7 w-7' : 'h-7 max-w-[160px]')} />
+  return (
+    <span className="flex items-center gap-2 min-w-0">
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--radius-md)] bg-brand text-on-brand font-bold" style={{ fontFamily: 'var(--font-display)' }}>
+        {name.charAt(0)}
+      </span>
+      {!compact && <span className="truncate text-[15px] font-bold text-ink" style={{ fontFamily: 'var(--font-display)' }}>{name}</span>}
+    </span>
+  )
+}
+
 export default function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
   const { t } = useI18n()
   const { activeCompany } = useCompany()
+  const { modules } = useAppSettings()
+  const sections = navigation(modules)
 
   const [collapsed, setCollapsed] = useState(() => {
-    return localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true'
+    try { return localStorage.getItem(COLLAPSED_KEY) === 'true' } catch { return false }
   })
-
   useEffect(() => {
-    localStorage.setItem(SIDEBAR_STORAGE_KEY, String(collapsed))
+    try { localStorage.setItem(COLLAPSED_KEY, String(collapsed)) } catch { /* storage blocked */ }
   }, [collapsed])
 
-  const toggleSidebar = () => setCollapsed(prev => !prev)
-
-  // Navigation link content
-  const renderNavContent = (isMobileView: boolean) => (
+  const content = (compact: boolean, onNavigate?: () => void) => (
     <>
-      {/* Header Logo area */}
-      <div
-        className={cn(
-          'flex items-center border-b border-[var(--color-border)] py-2.5 transition-all',
-          !isMobileView && collapsed ? 'justify-center px-2' : 'justify-between px-5'
-        )}
-      >
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0 shadow-sm shadow-indigo-200 dark:shadow-none">
-            <Zap className="w-4 h-4 text-white" />
-          </div>
-          {(isMobileView || !collapsed) && (
-            <div className="min-w-0 flex-1 overflow-hidden">
-              <p className="font-bold text-sm text-[var(--color-text)] leading-tight font-sans tracking-tight">
-                FlowCom
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Mobile close X button */}
-        {isMobileView && (
-          <button
-            onClick={onCloseMobile}
-            className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)]"
-          >
-            <X className="w-5 h-5" />
-          </button>
+      <div className={cn('flex h-[var(--topbar-height)] shrink-0 items-center border-b border-line', compact ? 'justify-center px-2' : 'justify-between px-4')}>
+        <Brand compact={compact} />
+        {onNavigate && (
+          <button onClick={onCloseMobile} aria-label="Fermer le menu" className="fc-btn fc-btn--ghost fc-btn--icon fc-btn--sm"><X /></button>
         )}
       </div>
 
-      {/* Active Workspace / Company badge */}
       {activeCompany && (
-        <div className={cn('mx-2 mt-3 transition-all', !isMobileView && collapsed ? 'px-0' : 'mx-3')}>
-          {!isMobileView && collapsed ? (
-            <div
-              className="flex justify-center p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900"
-              title={`${activeCompany.name} (Workspace)`}
-            >
-              {activeCompany.logo_url ? (
-                <img src={activeCompany.logo_url} alt="" className="w-4 h-4 object-contain rounded" />
-              ) : (
-                <Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-              )}
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900">
-              {activeCompany.logo_url ? (
-                <div className="w-6 h-6 rounded bg-white dark:bg-gray-800 p-0.5 border border-indigo-200 dark:border-indigo-800 shrink-0 flex items-center justify-center overflow-hidden">
-                  <img src={activeCompany.logo_url} alt="" className="w-full h-full object-contain" />
-                </div>
-              ) : (
-                <Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-semibold text-indigo-500 uppercase tracking-wider leading-none">
-                  Workspace
-                </p>
-                <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 truncate mt-0.5">
-                  {activeCompany.name}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Nav links */}
-      <nav className={cn('flex-1 overflow-y-auto py-3 space-y-1', !isMobileView && collapsed ? 'px-2' : 'px-3')}>
-        {navItems.map(({ to, icon: Icon, labelKey }) => {
-          const label = t(labelKey as Parameters<typeof t>[0])
-          return (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={() => isMobileView && onCloseMobile()}
-              title={!isMobileView && collapsed ? label : undefined}
-              className={({ isActive }) => cn(
-                'flex items-center rounded-xl text-sm font-medium transition-colors',
-                !isMobileView && collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5',
-                isActive
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text)]'
-              )}
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              {(isMobileView || !collapsed) && <span className="truncate">{label}</span>}
-            </NavLink>
-          )
-        })}
-
-        {/* Divider + utility links */}
-        <div className="pt-2 mt-2 border-t border-[var(--color-border)]">
-          <div className={cn('grid gap-1', !isMobileView && !collapsed ? 'grid-cols-2' : 'grid-cols-1')}>
-          <NavLink
-            to="/memory"
-            onClick={() => isMobileView && onCloseMobile()}
-            title={!isMobileView && collapsed ? t('nav.memory') : undefined}
-            className={({ isActive }) => cn(
-              'flex items-center rounded-xl text-sm font-medium transition-colors',
-              !isMobileView && collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5',
-              isActive
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text)]'
+        <div className={cn('shrink-0 pt-3', compact ? 'px-2' : 'px-3')}>
+          <div title={compact ? activeCompany.name : undefined}
+            className={cn('flex items-center gap-2 rounded-[var(--radius-md)] border border-line bg-surface-page', compact ? 'justify-center p-2' : 'px-3 py-2')}>
+            {activeCompany.logo_url
+              ? <img src={activeCompany.logo_url} alt="" className="h-5 w-5 shrink-0 rounded object-contain" />
+              : <Building2 className="h-4 w-4 shrink-0 text-ink-muted" />}
+            {!compact && (
+              <span className="min-w-0">
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-ink-muted">{t('nav.company')}</span>
+                <span className="block truncate text-[13px] font-semibold text-ink">{activeCompany.name}</span>
+              </span>
             )}
-          >
-            <Brain className="w-4 h-4 shrink-0" />
-            {(isMobileView || !collapsed) && <span className="truncate">{t('nav.memory')}</span>}
-          </NavLink>
-          <NavLink
-            to="/onboarding"
-            onClick={() => isMobileView && onCloseMobile()}
-            title={!isMobileView && collapsed ? t('nav.profile') : undefined}
-            className={({ isActive }) => cn(
-              'flex items-center rounded-xl text-sm font-medium transition-colors',
-              !isMobileView && collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5',
-              isActive
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text)]'
-            )}
-          >
-            <UserCircle className="w-4 h-4 shrink-0" />
-            {(isMobileView || !collapsed) && <span className="truncate">{t('nav.profile')}</span>}
-          </NavLink>
           </div>
         </div>
-      </nav>
-
-      {/* Footer */}
-      {(isMobileView || !collapsed) && (
-        <div className="px-4 py-3 border-t border-[var(--color-border)]">
-          <p className="text-[11px] text-[var(--color-text-muted)] leading-relaxed">
-            {t('sidebar.offlineTitle')} · {t('sidebar.offlineDesc')}
-          </p>
-        </div>
       )}
+
+      <nav aria-label="Navigation" className={cn('flex-1 overflow-y-auto pb-4', compact ? 'px-2' : 'px-3')}>
+        {sections.map(section => (
+          <div key={section.id} className="mt-4">
+            {compact
+              ? <div className="mx-auto mb-1 h-px w-6 bg-line" aria-hidden="true" />
+              : <p className="mb-1 px-3 text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted">{t(section.labelKey)}</p>}
+            <ul className="space-y-0.5">
+              {section.items.map(({ to, labelKey, icon: Icon }) => {
+                const label = t(labelKey)
+                return (
+                  <li key={to}>
+                    <NavLink to={to} onClick={onNavigate} title={compact ? label : undefined}
+                      className={({ isActive }) => cn(
+                        'flex h-9 items-center rounded-[var(--radius-md)] text-sm transition-colors',
+                        compact ? 'justify-center' : 'gap-3 px-3',
+                        isActive ? 'bg-brand-soft font-semibold text-brand-ink' : 'font-medium text-ink-muted hover:bg-surface-sunken hover:text-ink',
+                      )}>
+                      <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
+                      {!compact && <span className="truncate">{label}</span>}
+                    </NavLink>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        ))}
+      </nav>
     </>
   )
 
   return (
     <>
-      {/* ─── MOBILE DRAWER (hidden on md and above) ────────────────── */}
-      {mobileOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs md:hidden transition-opacity"
-          onClick={onCloseMobile}
-        />
-      )}
-      <aside
-        className={cn(
-          'fixed inset-y-0 left-0 z-50 w-72 flex flex-col bg-[var(--color-surface)] border-r border-[var(--color-border)] shadow-2xl transition-transform duration-300 ease-in-out md:hidden',
-          mobileOpen ? 'translate-x-0' : '-translate-x-full'
-        )}
-      >
-        {renderNavContent(true)}
+      {/* Phone and tablet portrait: drawer */}
+      {mobileOpen && <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={onCloseMobile} aria-hidden="true" />}
+      <aside aria-hidden={!mobileOpen}
+        className={cn('fixed inset-y-0 left-0 z-50 flex w-[min(85vw,var(--sidebar-width))] flex-col bg-surface-card shadow-[var(--shadow-lg)] transition-transform duration-300 md:hidden',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full')}>
+        {content(false, onCloseMobile)}
       </aside>
 
-      {/* ─── DESKTOP SIDEBAR (hidden on mobile, visible on md+) ─────── */}
-      <aside
-        className={cn(
-          'relative hidden md:flex flex-col h-full border-r border-[var(--color-border)] bg-[var(--color-surface)] shrink-0 transition-all duration-300 ease-in-out',
-          collapsed ? 'w-16' : 'w-64'
-        )}
-      >
-        {/* Toggle button on border edge */}
-        <button
-          onClick={toggleSidebar}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="absolute -right-3 top-6 z-20 flex items-center justify-center w-6 h-6 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-indigo-600 hover:border-indigo-400 shadow-sm transition-all"
-        >
-          {collapsed ? (
-            <ChevronRight className="w-3.5 h-3.5" />
-          ) : (
-            <ChevronLeft className="w-3.5 h-3.5" />
-          )}
-        </button>
-
-        {renderNavContent(false)}
+      {/* Desktop: collapsible sidebar */}
+      <aside className={cn('relative hidden h-full shrink-0 flex-col border-r border-line bg-surface-card transition-[width] duration-300 md:flex',
+        collapsed ? 'w-[var(--sidebar-collapsed)]' : 'w-[var(--sidebar-width)]')}>
+        {content(collapsed)}
+        <div className={cn('shrink-0 border-t border-line p-2', collapsed ? 'flex justify-center' : '')}>
+          <button onClick={() => setCollapsed(c => !c)} className={cn('fc-btn fc-btn--ghost fc-btn--sm', !collapsed && 'w-full justify-start')}
+            aria-label={collapsed ? 'Déplier le menu' : 'Replier le menu'}>
+            {collapsed ? <ChevronsRight /> : <ChevronsLeft />}
+            {!collapsed && <span>{t('nav.collapse')}</span>}
+          </button>
+        </div>
       </aside>
     </>
   )

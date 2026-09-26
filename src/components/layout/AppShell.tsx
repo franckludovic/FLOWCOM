@@ -10,7 +10,7 @@ export function AppShell() {
   const [assistantOpen, setAssistantOpen] = useState(false)
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--color-surface-alt)]">
+    <div className="flex h-screen overflow-hidden bg-surface-page">
       {/* Sidebar (handles desktop + mobile drawer) */}
       <Sidebar
         mobileOpen={mobileOpen}

@@ -1,44 +1,94 @@
 @import "tailwindcss";
+@import "./styles/fc.css";
 
+/*
+ * Every colour, font, corner and size comes from the theme engine
+ * (src/theme), which writes the design-system tokens as CSS variables on
+ * :root (light) and :root.dark (dark). Nothing below holds a raw colour.
+ */
 @theme {
-  --font-sans: 'Plus Jakarta Sans', sans-serif;
-  --font-body: 'Inter', sans-serif;
+  --font-sans: var(--font-display);
 
-  --color-primary-50: #eef2ff;
-  --color-primary-100: #e0e7ff;
-  --color-primary-200: #c7d2fe;
-  --color-primary-300: #a5b4fc;
-  --color-primary-400: #818cf8;
-  --color-primary-500: #6366f1;
-  --color-primary-600: #4f46e5;
-  --color-primary-700: #4338ca;
-  --color-primary-800: #3730a3;
-  --color-primary-900: #312e81;
-  --color-primary-950: #1e1b4b;
+  /* Semantic utilities: bg-surface-card, text-ink, border-line, bg-brand, text-on-brand, … */
+  --color-surface-page: var(--surface-page);
+  --color-surface-card: var(--surface-card);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-overlay: var(--surface-overlay);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-ink: var(--brand-ink);
+  --color-on-brand: var(--on-brand);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-on-accent: var(--on-accent);
+  --color-focus: var(--focus);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
 
-  --color-surface: #ffffff;
-  --color-surface-alt: #f8fafc;
-  --color-border: #e2e8f0;
-  --color-text: #0f172a;
-  --color-text-muted: #64748b;
+  /* Legacy names used by pages not yet redesigned. */
+  --color-surface: var(--surface-card);
+  --color-surface-alt: var(--surface-page);
+  --color-border: var(--line);
+  --color-text: var(--ink);
+  --color-text-muted: var(--ink-muted);
+
+  /*
+   * Until each page is redesigned, the Tailwind colour families those pages use
+   * follow the theme too: indigo and violet become the brand, emerald the
+   * success colour, amber the warning colour, red and rose the danger colour,
+   * sky and blue the info colour. The theme sets these per mode, so a light
+   * shade and its dark: counterpart both resolve correctly.
+   */
+  --color-indigo-50: var(--brand-soft);  --color-indigo-100: var(--brand-soft); --color-indigo-200: var(--brand-soft);
+  --color-indigo-300: var(--brand);      --color-indigo-400: var(--brand);      --color-indigo-500: var(--brand);
+  --color-indigo-600: var(--brand);      --color-indigo-700: var(--brand-hover); --color-indigo-800: var(--brand-hover);
+  --color-indigo-900: var(--brand-soft); --color-indigo-950: var(--brand-soft);
+  --color-violet-50: var(--brand-soft);  --color-violet-100: var(--brand-soft); --color-violet-200: var(--brand-soft);
+  --color-violet-300: var(--brand);      --color-violet-400: var(--brand);      --color-violet-500: var(--brand);
+  --color-violet-600: var(--brand);      --color-violet-700: var(--brand-hover); --color-violet-800: var(--brand-hover);
+  --color-violet-900: var(--brand-soft); --color-violet-950: var(--brand-soft);
+  --color-emerald-50: var(--success-soft); --color-emerald-100: var(--success-soft); --color-emerald-200: var(--success-soft);
+  --color-emerald-300: var(--success); --color-emerald-400: var(--success); --color-emerald-500: var(--success);
+  --color-emerald-600: var(--success); --color-emerald-700: var(--success); --color-emerald-800: var(--success);
+  --color-emerald-900: var(--success-soft); --color-emerald-950: var(--success-soft);
+  --color-amber-50: var(--warning-soft); --color-amber-100: var(--warning-soft); --color-amber-200: var(--warning-soft);
+  --color-amber-300: var(--warning); --color-amber-400: var(--warning); --color-amber-500: var(--warning);
+  --color-amber-600: var(--warning); --color-amber-700: var(--warning); --color-amber-800: var(--warning);
+  --color-amber-900: var(--warning-soft); --color-amber-950: var(--warning-soft);
+  --color-red-50: var(--danger-soft); --color-red-100: var(--danger-soft); --color-red-200: var(--danger-soft);
+  --color-red-300: var(--danger); --color-red-400: var(--danger); --color-red-500: var(--danger);
+  --color-red-600: var(--danger); --color-red-700: var(--danger); --color-red-800: var(--danger);
+  --color-red-900: var(--danger-soft); --color-red-950: var(--danger-soft);
+  --color-rose-50: var(--danger-soft); --color-rose-100: var(--danger-soft); --color-rose-200: var(--danger-soft);
+  --color-rose-300: var(--danger); --color-rose-400: var(--danger); --color-rose-500: var(--danger);
+  --color-rose-600: var(--danger); --color-rose-700: var(--danger); --color-rose-800: var(--danger);
+  --color-rose-900: var(--danger-soft); --color-rose-950: var(--danger-soft);
+  --color-sky-50: var(--info-soft); --color-sky-100: var(--info-soft); --color-sky-200: var(--info-soft);
+  --color-sky-300: var(--info); --color-sky-400: var(--info); --color-sky-500: var(--info);
+  --color-sky-600: var(--info); --color-sky-700: var(--info); --color-sky-800: var(--info);
+  --color-sky-900: var(--info-soft); --color-sky-950: var(--info-soft);
+  --color-blue-50: var(--info-soft); --color-blue-100: var(--info-soft); --color-blue-200: var(--info-soft);
+  --color-blue-300: var(--info); --color-blue-400: var(--info); --color-blue-500: var(--info);
+  --color-blue-600: var(--info); --color-blue-700: var(--info); --color-blue-800: var(--info);
+  --color-blue-900: var(--info-soft); --color-blue-950: var(--info-soft);
 }
 
 @layer base {
-  :root {
-    color-scheme: light;
-  }
-
-  .dark {
-    color-scheme: dark;
-    --color-surface: #0f172a;
-    --color-surface-alt: #1e293b;
-    --color-border: #334155;
-    --color-text: #f8fafc;
-    --color-text-muted: #94a3b8;
-  }
-
   * {
-    border-color: var(--color-border);
+    border-color: var(--line);
     box-sizing: border-box;
   }
 
@@ -48,37 +98,28 @@
   }
 
   body {
-    background-color: var(--color-surface-alt);
-    color: var(--color-text);
+    background-color: var(--surface-page);
+    color: var(--ink);
     margin: 0;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-sans);
+    font-family: var(--font-display);
     font-weight: 700;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  ::placeholder {
+    color: var(--ink-subtle);
   }
 
   /* Scrollbar */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--color-text-muted); }
-}
-
-/* ─── Chart palette (validated categorical order; dark steps chosen for the dark surface) ─── */
-:root {
-  --viz-1: #2a78d6;
-  --viz-2: #eb6834;
-  --viz-3: #1baf7a;
-  --viz-4: #eda100;
-  --viz-5: #e87ba4;
-  --viz-6: #008300;
-}
-.dark {
-  --viz-1: #3987e5;
-  --viz-2: #d95926;
-  --viz-3: #199e70;
-  --viz-4: #c98500;
-  --viz-5: #d55181;
-  --viz-6: #008300;
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--ink-subtle); }
 }

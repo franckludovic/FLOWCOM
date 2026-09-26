@@ -17,6 +17,8 @@ import {
 } from '@/lib/assistant'
 import { approveAction, rejectAction, type ProposedAction } from '@/lib/assistantActions'
 import { ASSISTANT_MODEL } from '@/lib/integrations'
+import { useAppSettings } from '@/contexts/AppSettingsContext'
+import { enabledTools } from '@/modules/registry'
 import { buildModelError, type ChatMessage } from '@/lib/model'
 import { FallbackImage } from '@/components/FallbackImage'
 import { ChartBlock, TableBlock } from './ChartBlock'
@@ -117,6 +119,7 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
   const { activeCompany, products, segments, keyMessages } = useCompany()
   const { apiKeyConfigured, user, profile } = useAuth()
   const buffer = useBuffer()
+  const { modules } = useAppSettings()
   const { pathname } = useLocation()
   const page = pageFromPath(pathname)
 
@@ -138,7 +141,7 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
 
   const context = (): AssistantContext | null => activeCompany ? {
     company: activeCompany, products, segments, keyMessages, lang: lang === 'fr' ? 'fr' : 'en',
-    buffer: { orgId: buffer.orgId, channels: buffer.channels }, page, model: ASSISTANT_MODEL,
+    buffer: { orgId: buffer.orgId, channels: buffer.channels }, page, model: ASSISTANT_MODEL, tools: enabledTools(modules),
   } : null
 
   // Conversations belong to one user and company.
