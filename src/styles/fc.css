@@ -19,7 +19,8 @@
 .fc-btn--secondary:hover { background: var(--surface-sunken); }
 .fc-btn--ghost { background: transparent; color: var(--ink-muted); }
 .fc-btn--ghost:hover { background: var(--surface-sunken); color: var(--ink); }
-.fc-btn--danger { background: var(--surface-card); color: var(--danger); border-color: var(--danger); }
+.fc-btn--danger { background: var(--danger); color: var(--surface-card); border-color: var(--danger); }
+.fc-btn--danger:hover { background: color-mix(in oklab, var(--danger) 88%, var(--ink)); border-color: color-mix(in oklab, var(--danger) 88%, var(--ink)); }
 .fc-btn--ai { background: var(--accent); color: var(--on-accent); }
 .fc-btn--sm { height: var(--control-sm); padding: 0 10px; font-size: 13px; }
 .fc-btn--lg { height: var(--control-lg); padding: 0 18px; }

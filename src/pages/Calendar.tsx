@@ -719,7 +719,7 @@ Spread the ideas evenly and vary the formats. Respond in ${lang === 'fr' ? 'Fren
     <Sheet open={open} onClose={onClose} title={c.planTitle} subtitle={<span className="capitalize">{monthName} · {c.planSub}</span>}
       icon={<span className="fc-proposal__icon"><Spark /></span>} closeLabel={c.cancel}
       footer={<>
-        {hasMonthItems && <Button variant="ghost" size="sm" icon={<Trash2 />} onClick={onClear} className="text-danger">{c.clearMonth}</Button>}
+        {hasMonthItems && <Button variant="danger" size="sm" icon={<Trash2 />} onClick={onClear}>{c.clearMonth}</Button>}
         <span className="flex-1" />
         <Button variant="ghost" onClick={onClose}>{c.cancel}</Button>
         <Button variant="ai" loading={busy} onClick={() => void generate()} disabled={!channels.length}>{busy ? c.generating : c.generate}</Button>
@@ -813,11 +813,10 @@ function DetailSheet({ draft, onClose, c, lang, campaigns, canEdit, apiReady, on
       icon={form.id ? <span className="pt-0.5"><DateBlock date={form.date} lang={lang} /></span> : undefined}
       footer={<>
         {form.id && canEdit && (
-          <Button variant="ghost" icon={<Trash2 />} className="text-danger" disabled={busy}
-            onClick={() => { if (window.confirm(c.confirmDelete)) void run(() => onDelete(form.id!)) }}>{c.delete}</Button>
+          <Button variant="danger" iconOnly icon={<Trash2 />} aria-label={c.delete} disabled={busy}
+            onClick={() => { if (window.confirm(c.confirmDelete)) void run(() => onDelete(form.id!)) }} />
         )}
         <span className="flex-1" />
-        <Button variant="ghost" onClick={onClose}>{c.cancel}</Button>
         <Button variant="secondary" disabled={!canEdit || busy} onClick={save}>{c.save}</Button>
         <Button variant="ai" loading={busy} disabled={!canEdit || !apiReady} onClick={write}>{c.write}</Button>
       </>}>

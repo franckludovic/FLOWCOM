@@ -446,6 +446,7 @@ Respond only in ${L === 'fr' ? 'French' : 'English'}.`
         <Button variant="secondary" icon={savedId ? <Check /> : <Library />} loading={saving === 'save'} disabled={Boolean(saving) || Boolean(savedId)}
           onClick={() => void run('save')} className="w-full">{savedId ? c.saved : c.save}</Button>
         {brief.calendarId && calendarDateLabel && <p className="fc-hint m-0 mt-1">{c.calendarNote(calendarDateLabel)}</p>}
+        {error && !saving && <p className="m-0 mt-1 flex items-start gap-1.5 text-[13px] text-danger"><AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{error}</p>}
       </CardBody>
     </Card>
   )

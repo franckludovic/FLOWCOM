@@ -101,6 +101,7 @@ export interface LibraryItem {
   status: ContentStatus
   publish_date: string | null
   created_at: string
+  campaign_id?: string | null
 }
 
 // ─── Roadmap ─────────────────────────────────────────────────────────────────

@@ -55,6 +55,11 @@ export const FORMATS: Array<{ value: ContentFormat; label: { fr: string; en: str
 
 export const FORMAT_MAP = Object.fromEntries(FORMATS.map(f => [f.value, f])) as Record<ContentFormat, typeof FORMATS[number]>
 
+// Character limit of a post on each network (hashtags included).
+export const CHANNEL_LIMITS: Record<string, number> = {
+  linkedin: 3000, facebook: 5000, instagram: 2200, tiktok: 2200, whatsapp: 700, twitter: 280, youtube: 5000,
+}
+
 // The format that suits a network, keeping the current one when it already fits.
 const NETWORK_FORMATS: Record<string, ContentFormat[]> = {
   tiktok: ['Video'], youtube: ['Video'], instagram: ['Carousel', 'Story', 'Video', 'Post'],

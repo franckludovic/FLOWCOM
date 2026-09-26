@@ -34,7 +34,25 @@ type AuthUser = {
   user_metadata?: { name?: string; full_name?: string }
 }
 
+// Dataverse errors often arrive as a JSON string; keep only its message, and say
+// plainly when a text is too long for its column.
+function readableDataverseMessage(message: string): string {
+  let text = message
+  if (text.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(text) as { error?: { message?: string } }
+      if (parsed.error?.message) text = parsed.error.message
+    } catch { /* not JSON after all */ }
+  }
+  const column = text.match(/would be truncated[^']*'[^']*'[^']*column '([^']+)'/i)?.[1]
+  return column ? `The text is too long for the "${column.replace(/^fc_/i, '')}" field in Dataverse.` : text
+}
+
 function describeDataverseError(error: unknown): string {
+  return readableDataverseMessage(rawDataverseError(error))
+}
+
+function rawDataverseError(error: unknown): string {
   if (error instanceof Error) return error.message
   if (typeof error === 'string') return error
   if (error && typeof error === 'object') {
@@ -222,6 +240,7 @@ function libraryItemFromRow(row: Fc_libraryitems): LibraryRecord {
     status: (row.fc_statusname ?? 'Draft') as LibraryRecord['status'],
     publish_date: row.fc_publishdate ?? null,
     created_at: createdAt(row),
+    campaign_id: row._fc_campaign_value ?? null,
   }
 }
 
@@ -255,7 +274,7 @@ export async function updateDataverseProfile(id: string, updates: Partial<Profil
   if (updates.name !== undefined) payload.fc_name = updates.name
   if (updates.email !== undefined) payload.fc_email = updates.email
   if (updates.lang !== undefined) payload.fc_language = updates.lang
-  if (Object.keys(payload).length) await Fc_flowcomprofilesService.update(id, payload)
+  if (Object.keys(payload).length) unwrap(await Fc_flowcomprofilesService.update(id, payload), 'update flowcomprofiles')
 }
 
 export async function getCompaniesForProfile(profileId: string, userId: string): Promise<Company[]> {
@@ -462,7 +481,7 @@ export async function updateDataverseCalendarItem(id: string, changes: Partial<P
   if (changes.channel !== undefined) payload.fc_channel = changes.channel
   if (changes.format !== undefined) payload.fc_format = calendarFormatValue[changes.format] ?? calendarFormatValue.Post
   if (changes.status !== undefined) payload.fc_status = calendarStatusValue[changes.status] ?? calendarStatusValue.idea
-  await Fc_calendaritemsService.update(id, payload)
+  unwrap(await Fc_calendaritemsService.update(id, payload), 'update calendaritems')
 }
 
 export async function listDataverseLibraryItems(companyId: string): Promise<LibraryRecord[]> {
@@ -520,7 +539,7 @@ export async function updateDataverseLibraryItem(id: string, changes: Partial<Li
   if (changes.title !== undefined) payload.fc_name = changes.title
   if (changes.format !== undefined) payload.fc_format = libraryFormatValue[changes.format] ?? libraryFormatValue.post
   if (changes.status !== undefined) payload.fc_status = libraryStatusValue[changes.status] ?? libraryStatusValue.Draft
-  await Fc_libraryitemsService.update(id, payload)
+  unwrap(await Fc_libraryitemsService.update(id, payload), 'update libraryitems')
 }
 
 export async function deleteDataverseLibraryItem(id: string): Promise<void> {
@@ -552,7 +571,7 @@ export async function saveDataverseContentScores(companyId: string, scores: Reco
       top: 1,
     }), 'find content score')[0]
     if (existing) {
-      await Fc_contentscoresService.update(existing.fc_contentscoreid, { fc_score: contentScoreValue[score], fc_scoredat: new Date().toISOString() })
+      unwrap(await Fc_contentscoresService.update(existing.fc_contentscoreid, { fc_score: contentScoreValue[score], fc_scoredat: new Date().toISOString() }), 'update contentscores')
     } else {
       await Fc_contentscoresService.create({
         'fc_Company@odata.bind': lookup('fc_companies', companyId),
