@@ -11,10 +11,11 @@ import {
   type ReportAnalysis, type ReportMetric, type ReportPost, type WeeklyReport,
 } from '@/lib/reports'
 import { CHANNELS, CHANNEL_MAP } from '@/lib/channels'
-import { Button, Card, CardBody, CardHeader, Spark } from '@/components/ui'
+import { Button, Card, CardBody, CardHeader, Pager, Spark } from '@/components/ui'
 import { cn } from '@/lib/utils'
 
 const DAY = 86400000
+const PAGE_SIZE = 10
 const pad = (n: number) => String(n).padStart(2, '0')
 const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 const mondayOf = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x }
@@ -40,6 +41,7 @@ const COPY = {
     needReach: 'Saisissez la portée d’au moins un post avant l’analyse.',
     sections: { whatWorked: 'Ce qui a marché', whatToStop: 'À arrêter', nextWeek: 'La semaine prochaine', learnings: 'À retenir' } as Record<keyof ReportAnalysis, string>,
     loading: 'Chargement des posts…', network: 'Réseau', video: 'vidéo',
+    pages: 'Pages des posts', prevPage: 'Page précédente', nextPage: 'Page suivante', range: (a: number, b: number, t: number) => `${a}–${b} sur ${t}`,
     exportPdf: 'Exporter en PDF', exportHint: 'Dans la fenêtre d’impression, choisissez « Enregistrer au format PDF ».',
     needScored: 'Ajoutez aussi les commentaires, partages ou enregistrements pour calculer le score.', printedOn: 'Rapport établi le', total: 'Total',
   },
@@ -61,6 +63,7 @@ const COPY = {
     needReach: "Enter at least one post's reach before the analysis.",
     sections: { whatWorked: 'What worked', whatToStop: 'What to stop', nextWeek: 'Next week', learnings: 'Keep in mind' } as Record<keyof ReportAnalysis, string>,
     loading: 'Loading posts…', network: 'Network', video: 'video',
+    pages: 'Post pages', prevPage: 'Previous page', nextPage: 'Next page', range: (a: number, b: number, t: number) => `${a}–${b} of ${t}`,
     exportPdf: 'Export as PDF', exportHint: 'In the print window, choose “Save as PDF”.',
     needScored: 'Also enter comments, shares or saves to compute the score.', printedOn: 'Report produced on', total: 'Total',
   },
@@ -86,6 +89,7 @@ export default function ReportPage() {
   const [analyzing, setAnalyzing] = useState(false)
   const [error, setError] = useState('')
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [page, setPage] = useState(1)
   const dirty = useRef(false)
   const loadedWeek = useRef('')
 
@@ -160,6 +164,7 @@ export default function ReportPage() {
     loadedWeek.current = key
     dirty.current = false
     setReportId(saved?.id ?? null)
+    setPage(1)
     setPosts(saved?.posts ?? [])
     setAnalysis(saved?.analysis ?? null)
     setSaveState(saved ? 'saved' : 'idle')
@@ -219,6 +224,7 @@ export default function ReportPage() {
   const addPost = () => {
     dirty.current = true
     setPosts(prev => [{ id: crypto.randomUUID(), title: '', network: 'facebook', date: weekStart, values: emptyValues() }, ...prev])
+    setPage(1)
   }
   const removePost = (id: string) => { dirty.current = true; setPosts(prev => prev.filter(p => p.id !== id)) }
 
@@ -266,6 +272,10 @@ export default function ReportPage() {
     window.addEventListener('afterprint', () => { document.title = previousTitle }, { once: true })
     window.print()
   }
+
+  const pageCount = Math.max(1, Math.ceil(posts.length / PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount)
+  const pagePosts = posts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
   const completeCount = posts.filter(p => p.values.reach !== null).length
   const reachEntered = posts.some(p => (p.values.reach ?? 0) > 0)
@@ -324,7 +334,7 @@ export default function ReportPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {posts.map(post => {
+                      {pagePosts.map(post => {
                         const def = CHANNEL_MAP[post.network]
                         return (
                           <tr key={post.id} className="border-b border-line last:border-b-0">
@@ -362,6 +372,12 @@ export default function ReportPage() {
                       })}
                     </tbody>
                   </table>
+                </div>
+              )}
+              {pageCount > 1 && (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
+                  <span className="text-[12px] text-ink-muted tabular-nums">{c.range((currentPage - 1) * PAGE_SIZE + 1, Math.min(currentPage * PAGE_SIZE, posts.length), posts.length)}</span>
+                  <Pager page={currentPage} pageCount={pageCount} onChange={setPage} label={c.pages} previousLabel={c.prevPage} nextLabel={c.nextPage} />
                 </div>
               )}
               {posts.length > 0 && <p className="m-0 mt-2.5 text-[12px] text-ink-muted">{c.fillHint}</p>}

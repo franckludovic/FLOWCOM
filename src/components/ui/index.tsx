@@ -6,7 +6,7 @@ import {
   type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactNode,
   type SelectHTMLAttributes, type TextareaHTMLAttributes,
 } from 'react'
-import { ArrowDownRight, ArrowUpRight, Database, Loader2, X } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight, Database, Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ─── Spark: the AI's mark ─────────────────────────────────────────────────────
@@ -289,5 +289,36 @@ export function Sheet({ open, onClose, title, subtitle, icon, children, footer, 
         {footer && <div className="flex items-center gap-2 border-t border-line bg-surface-sunken px-5 py-3">{footer}</div>}
       </aside>
     </div>
+  )
+}
+
+// ─── Pager: ‹ 1 2 3 … 9 › under a long list ──────────────────────────────────
+
+export function Pager({ page, pageCount, onChange, label = 'Pages', previousLabel = 'Page précédente', nextLabel = 'Page suivante' }: {
+  page: number
+  pageCount: number
+  onChange: (page: number) => void
+  label?: string
+  previousLabel?: string
+  nextLabel?: string
+}) {
+  if (pageCount <= 1) return null
+  // First, last, and the pages around the current one; gaps become "…".
+  const shown = [...new Set([1, pageCount, page - 1, page, page + 1])].filter(n => n >= 1 && n <= pageCount).sort((a, b) => a - b)
+  const items: Array<number | 'gap'> = []
+  shown.forEach((n, i) => { if (i && n - shown[i - 1] > 1) items.push('gap'); items.push(n) })
+  return (
+    <nav aria-label={label} className="flex items-center justify-center gap-1">
+      <Button variant="ghost" size="sm" iconOnly icon={<ChevronLeft />} aria-label={previousLabel} disabled={page <= 1} onClick={() => onChange(page - 1)} />
+      {items.map((item, i) => item === 'gap'
+        ? <span key={`gap-${i}`} className="px-1 text-[13px] text-ink-subtle" aria-hidden="true">…</span>
+        : (
+          <button key={item} type="button" onClick={() => onChange(item)} aria-current={item === page ? 'page' : undefined}
+            className={cn('fc-btn fc-btn--sm min-w-[var(--control-sm)] px-2 tabular-nums', item === page ? 'fc-btn--primary' : 'fc-btn--ghost')}>
+            {item}
+          </button>
+        ))}
+      <Button variant="ghost" size="sm" iconOnly icon={<ChevronRight />} aria-label={nextLabel} disabled={page >= pageCount} onClick={() => onChange(page + 1)} />
+    </nav>
   )
 }
