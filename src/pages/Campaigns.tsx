@@ -19,7 +19,7 @@ import { listDataverseCalendarItems, listDataverseLibraryItems } from '@/lib/dat
 import { callModel, callModelJSON, buildModelError } from '@/lib/model'
 import { buildAiContext } from '@/lib/aiContext'
 import { createPlace, createZone, deleteZone, describeZone, listPlaces, listZones, updateZone, type Place, type Zone, type ZoneInput } from '@/lib/geo'
-import { Badge, Button, Card, CardBody, CardHeader, Chip, SelectField, Sheet, Spark, TextField, type Tone } from '@/components/ui'
+import { Badge, Button, Card, CardBody, CardHeader, Chip, PagerBar, SelectField, Sheet, Spark, TextField, usePaged, type Tone } from '@/components/ui'
 import { cn } from '@/lib/utils'
 
 // ─── Copy ─────────────────────────────────────────────────────────────────────
@@ -266,6 +266,7 @@ function CampaignList({ campaigns, totals, zoneName, c, lang }: {
   campaigns: Campaign[]; totals: Record<string, MetricTotals>; zoneName: (cp: Campaign) => string; c: Copy; lang: 'fr' | 'en'
 }) {
   const f = useFormat(lang)
+  const paged = usePaged(campaigns, campaigns.map(cp => cp.id).join(','))
   const figure = (value: number | undefined, target: number | null, started: boolean) => {
     if (!started) return { main: '—', sub: target ? `${c.target} ${f.n(target)}` : c.notStarted }
     const v = value ?? 0
@@ -281,7 +282,7 @@ function CampaignList({ campaigns, totals, zoneName, c, lang }: {
       <div className={cn('hidden gap-4 border-b border-line bg-surface-sunken px-3.5 py-2 text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted sm:grid', cols)}>
         <span>{c.campaign}</span><span>{c.period}</span><span>{c.reach}</span><span>{c.leads}</span><span>{c.status}</span>
       </div>
-      {campaigns.map(cp => {
+      {paged.items.map(cp => {
         const t = timeline(cp)
         const started = !t || t.before === 0
         const reach = figure(totals[cp.id]?.reach, cp.target_reach, started)
@@ -322,6 +323,7 @@ function CampaignList({ campaigns, totals, zoneName, c, lang }: {
           </Link>
         )
       })}
+      <PagerBar paged={paged} lang={lang} className="border-t border-line px-3.5 py-2.5" />
     </Card>
   )
 }
@@ -483,6 +485,8 @@ function CampaignDetail({ campaign, c, lang, canEdit, zoneLabel, onEdit, onChang
   const [error, setError] = useState('')
   const [showEntry, setShowEntry] = useState(false)
   const [showOlder, setShowOlder] = useState(false)
+  const pagedMetrics = usePaged([...metrics].reverse(), campaign.id)
+  const pagedContent = usePaged(content, campaign.id)
 
   const load = useCallback(async () => {
     if (!activeCompany) return
@@ -743,7 +747,7 @@ function CampaignDetail({ campaign, c, lang, canEdit, zoneLabel, onEdit, onChang
                       </tr>
                     </thead>
                     <tbody>
-                      {[...metrics].reverse().map(m => (
+                      {pagedMetrics.items.map(m => (
                         <tr key={m.id} className="border-b border-line text-ink last:border-b-0">
                           <td className="whitespace-nowrap py-1.5 pr-3 text-ink-muted">{f.d(m.date)}</td>
                           <td className="py-1.5 pr-3">
@@ -758,6 +762,7 @@ function CampaignDetail({ campaign, c, lang, canEdit, zoneLabel, onEdit, onChang
                       ))}
                     </tbody>
                   </table>
+                  <PagerBar paged={pagedMetrics} lang={lang} className="border-t border-line pt-2.5" />
                 </div>
               )}
             </CardBody>
@@ -797,7 +802,7 @@ function CampaignDetail({ campaign, c, lang, canEdit, zoneLabel, onEdit, onChang
                 <p className="m-0 text-[13px] text-ink-muted">{c.noContent}</p>
               ) : (
                 <ul className="m-0 flex list-none flex-col p-0">
-                  {content.map(item => {
+                  {pagedContent.items.map(item => {
                     const status = c.itemStatus[item.status] ?? item.status
                     const tone: Tone = /publi/i.test(item.status) ? 'success' : /schedul|valid/i.test(item.status) ? 'info' : 'neutral'
                     return (
@@ -812,6 +817,7 @@ function CampaignDetail({ campaign, c, lang, canEdit, zoneLabel, onEdit, onChang
                   })}
                 </ul>
               )}
+              <PagerBar paged={pagedContent} lang={lang} className="mt-2 border-t border-line pt-2.5" />
             </CardBody>
           </Card>
         </div>

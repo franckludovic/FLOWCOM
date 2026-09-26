@@ -13,7 +13,7 @@ import {
 } from '@/lib/dataverse'
 import { CHANNELS, CHANNEL_MAP, ChannelIcons, FORMATS, FORMAT_MAP, networkOf, parseChannels, suggestedFormat, type ContentFormat } from '@/lib/channels'
 import {
-  Badge, Button, Card, CardBody, CardHeader, Chip, InsightCard, SelectField, Sheet, Spark, TextField, type Tone,
+  Badge, Button, Card, CardBody, CardHeader, Chip, InsightCard, PagerBar, SelectField, Sheet, Spark, TextField, usePaged, type Tone,
 } from '@/components/ui'
 import { cn } from '@/lib/utils'
 
@@ -484,9 +484,10 @@ function DaySheet({ day, items, c, lang, canEdit, onClose, onOpen, onNew }: {
 function ListView({ items, c, lang, canEdit, onOpen, onNew }: {
   items: CalendarItem[]; c: Copy; lang: 'fr' | 'en'; canEdit: boolean; onOpen: (item: CalendarItem) => void; onNew: () => void
 }) {
+  const paged = usePaged(items, items.map(i => i.id).join(','))
   const groups = useMemo(() => {
     const map = new Map<string, CalendarItem[]>()
-    for (const item of items) {
+    for (const item of paged.items) {
       const d = new Date(`${item.date}T00:00:00`)
       const monday = new Date(d)
       monday.setDate(d.getDate() - ((d.getDay() + 6) % 7))
@@ -494,7 +495,7 @@ function ListView({ items, c, lang, canEdit, onOpen, onNew }: {
       map.set(key, [...(map.get(key) ?? []), item])
     }
     return [...map.entries()]
-  }, [items])
+  }, [paged.items])
 
   if (!items.length) {
     return (
@@ -533,6 +534,7 @@ function ListView({ items, c, lang, canEdit, onOpen, onNew }: {
           })}
         </section>
       ))}
+      <PagerBar paged={paged} lang={lang} />
     </div>
   )
 }

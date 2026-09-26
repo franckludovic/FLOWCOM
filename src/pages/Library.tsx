@@ -12,7 +12,7 @@ import { buildAiContext } from '@/lib/aiContext'
 import { useCampaignOptions } from '@/lib/campaignContext'
 import { CHANNELS, CHANNEL_LIMITS, CHANNEL_MAP, FORMAT_MAP, suggestedFormat, type ContentFormat } from '@/lib/channels'
 import {
-  Badge, Button, Card, Chip, InsightCard, Sheet, Spark, Tabs, TextAreaField, TextField, type Tone,
+  Badge, Button, Card, Chip, InsightCard, PagerBar, Sheet, Spark, Tabs, TextAreaField, TextField, usePaged, type Tone,
 } from '@/components/ui'
 import type { LibraryItem } from '@/types'
 import { cn } from '@/lib/utils'
@@ -228,6 +228,8 @@ export default function LibraryPage() {
     return list.sort((a, b) => sort === 'title' ? a.title.localeCompare(b.title) : sort === 'oldest' ? a.created_at.localeCompare(b.created_at) : b.created_at.localeCompare(a.created_at))
   }, [items, tab, network, format, search, sort, readyOnly, scores])
 
+  const paged = usePaged(visible, [tab, search, network, format, sort, readyOnly].join('|'))
+
   // Keep a selection on wide screens; phones open the item on tap.
   useEffect(() => {
     if (narrow) return
@@ -314,10 +316,11 @@ export default function LibraryPage() {
               <Card className="px-6 py-10 text-center text-sm text-ink-muted">{c.noMatch}</Card>
             ) : (
               <div className="flex flex-col gap-1.5">
-                {visible.map(item => (
+                {paged.items.map(item => (
                   <Row key={item.id} item={item} c={c} lang={L} score={scores[item.id]} campaign={campaignName(item.campaign_id)}
                     selected={!narrow && item.id === selectedId} onClick={() => setSelectedId(item.id)} />
                 ))}
+                <PagerBar paged={paged} lang={L} className="pt-1.5" />
               </div>
             )}
           </section>

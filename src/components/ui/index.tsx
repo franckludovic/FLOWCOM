@@ -2,7 +2,7 @@
 // fc-* classes (src/styles/fc.css). Pages build from these instead of styling
 // buttons, cards and badges themselves.
 import {
-  forwardRef, useEffect, useId,
+  forwardRef, useEffect, useId, useState,
   type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactNode,
   type SelectHTMLAttributes, type TextareaHTMLAttributes,
 } from 'react'
@@ -320,5 +320,35 @@ export function Pager({ page, pageCount, onChange, label = 'Pages', previousLabe
         ))}
       <Button variant="ghost" size="sm" iconOnly icon={<ChevronRight />} aria-label={nextLabel} disabled={page >= pageCount} onClick={() => onChange(page + 1)} />
     </nav>
+  )
+}
+
+// ─── Paging a list: ten at a time, the pager only once there are more ────────
+
+export const PAGE_SIZE = 10
+
+export function usePaged<T>(items: T[], resetKey?: string, size = PAGE_SIZE) {
+  const [page, setPage] = useState(1)
+  // Back to the first page when the list's filters change.
+  useEffect(() => { setPage(1) }, [resetKey])
+  const pageCount = Math.max(1, Math.ceil(items.length / size))
+  const current = Math.min(page, pageCount)
+  return {
+    page: current, setPage, pageCount, total: items.length,
+    from: items.length ? (current - 1) * size + 1 : 0,
+    to: Math.min(current * size, items.length),
+    items: items.slice((current - 1) * size, current * size),
+  }
+}
+
+export function PagerBar({ paged, lang = 'fr', className }: { paged: ReturnType<typeof usePaged>; lang?: 'fr' | 'en'; className?: string }) {
+  if (paged.pageCount <= 1) return null
+  const fr = lang === 'fr'
+  return (
+    <div className={cn('flex flex-wrap items-center justify-between gap-2', className)}>
+      <span className="text-[12px] text-ink-muted tabular-nums">{paged.from}–{paged.to} {fr ? 'sur' : 'of'} {paged.total}</span>
+      <Pager page={paged.page} pageCount={paged.pageCount} onChange={paged.setPage}
+        label={fr ? 'Pages' : 'Pages'} previousLabel={fr ? 'Page précédente' : 'Previous page'} nextLabel={fr ? 'Page suivante' : 'Next page'} />
+    </div>
   )
 }

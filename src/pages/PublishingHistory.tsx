@@ -10,7 +10,7 @@ import { buildAiContext } from '@/lib/aiContext'
 import { listCampaignPostIds } from '@/lib/campaigns'
 import { useCampaignOptions } from '@/lib/campaignContext'
 import { CHANNEL_MAP } from '@/lib/channels'
-import { Button, Card, Chip, Spark, Tabs } from '@/components/ui'
+import { Button, Card, Chip, PagerBar, Spark, Tabs, usePaged } from '@/components/ui'
 import { cn } from '@/lib/utils'
 
 type Status = 'scheduled' | 'sent' | 'error'
@@ -189,14 +189,15 @@ export default function PublishingHistoryPage() {
       .sort((a, b) => (tab === 'scheduled' ? (a.at ?? '').localeCompare(b.at ?? '') : (b.at ?? '').localeCompare(a.at ?? '')))
   }, [current.posts, accountFilter, since, search, tab])
 
+  const paged = usePaged(visible, [tab, search, period, accountFilter.join(',')].join('|'))
   const groups = useMemo(() => {
     const map = new Map<string, Post[]>()
-    for (const post of visible) {
+    for (const post of paged.items) {
       const key = post.at ? post.at.slice(0, 10) : 'none'
       map.set(key, [...(map.get(key) ?? []), post])
     }
     return [...map.entries()]
-  }, [visible])
+  }, [paged.items])
 
   const dayLabel = (key: string) => {
     if (key === 'none') return '—'
@@ -293,7 +294,8 @@ export default function PublishingHistoryPage() {
                 ))}
               </section>
             ))}
-            {current.hasMore && (
+            <PagerBar paged={paged} lang={L} className="border-t border-line px-3.5 py-2.5" />
+            {current.hasMore && paged.page === paged.pageCount && (
               <div className="flex justify-center border-t border-line p-3">
                 <Button variant="ghost" size="sm" loading={current.loading} onClick={() => void fetchStatus(tab, false)}>{c.more}</Button>
               </div>
