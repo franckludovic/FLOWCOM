@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Brain, Check, ExternalLink, Loader2, Send, ShieldCheck } from 'lucide-react'
+import { Brain, Check, ExternalLink, Send, ShieldCheck } from 'lucide-react'
 import { useI18n } from '@/contexts/I18nContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCompany } from '@/contexts/CompanyContext'
@@ -10,8 +10,8 @@ import {
   type IntegrationDefinition, type IntegrationId, type ProviderOption,
 } from '@/lib/integrations'
 import { saveBufferToken } from '@/lib/buffer'
-import { cn } from '@/lib/utils'
-import { Button, Tabs } from '@/components/ui'
+import { useIsManager } from '@/lib/managers'
+import { Badge, Button, Card, Tabs, type Tone } from '@/components/ui'
 import { AppearanceSettings } from './settings/AppearanceSettings'
 import { ModulesSettings } from './settings/ModulesSettings'
 
@@ -27,19 +27,13 @@ const icons: Record<IntegrationId, typeof Brain> = {
   publishing: Send,
 }
 
-const statusStyles: Record<IntegrationStatus, string> = {
-  connected: 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40',
-  notConnected: 'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40',
-  checking: 'text-[var(--color-text-muted)] bg-[var(--color-surface-alt)]',
-}
+const statusTone: Record<IntegrationStatus, Tone> = { connected: 'success', notConnected: 'warning', checking: 'neutral' }
 
 const statusLabels = {
   connected: 'settings.status.connected',
   notConnected: 'settings.status.notConnected',
   checking: 'settings.status.checking',
 } as const
-
-const inputClass = 'px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-alt)] text-[var(--color-text)] text-sm outline-none focus:ring-2 focus:ring-indigo-500'
 
 type SettingsTab = 'integrations' | 'appearance' | 'modules'
 
@@ -51,8 +45,10 @@ export default function SettingsPage() {
   const { apiKeyConfigured, updateApiKey } = useAuth()
   const { activeCompany } = useCompany()
   const buffer = useBuffer()
-
-  const canManage = Boolean(activeCompany && ['owner', 'admin'].includes(activeCompany.role ?? ''))
+  // The page is reserved for FlowCom's team; its members manage every client
+  // company, whatever their role in it.
+  const manager = useIsManager()
+  const canManage = manager || Boolean(activeCompany && ['owner', 'admin'].includes(activeCompany.role ?? ''))
 
   const handlers: Record<IntegrationId, IntegrationHandler> = {
     model: {
@@ -70,13 +66,14 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-surface-page">
-      <div className="mx-auto max-w-[var(--content-max)] px-4 py-5 sm:px-6 space-y-4">
-        <div>
-          <h1 className="text-[24px] leading-[30px] font-bold text-ink">{fr ? 'Paramètres' : 'Settings'}</h1>
-          <p className="text-sm text-ink-muted">
-            {tab === 'integrations' ? <>{t('settings.subtitle')}{activeCompany && <span className="font-medium text-ink"> {activeCompany.name}</span>}</>
-              : fr ? "Réglages de toute l'installation." : 'Settings for the whole installation.'}
+    <div className="min-h-full bg-surface-page">
+      <div className="mx-auto flex max-w-[var(--content-max)] flex-col gap-3.5 px-4 py-5 sm:px-6">
+        <div className="min-w-0">
+          <h1 className="m-0 text-[22px] font-bold leading-7 text-ink sm:text-[24px] sm:leading-[30px]" style={{ fontFamily: 'var(--font-display)' }}>{fr ? 'Paramètres' : 'Settings'}</h1>
+          <p className="m-0 mt-0.5 text-sm text-ink-muted">
+            {tab === 'integrations'
+              ? <>{fr ? 'Services connectés de' : 'Connected services of'} <span className="font-semibold text-ink">{activeCompany?.name ?? '—'}</span> · {fr ? "réservé à l'équipe FlowCom" : 'FlowCom team only'}</>
+              : fr ? "Réglages de toute l'installation · réservé à l'équipe FlowCom" : 'Settings for the whole installation · FlowCom team only'}
           </p>
         </div>
 
@@ -89,28 +86,19 @@ export default function SettingsPage() {
         {tab === 'appearance' ? <AppearanceSettings canManage={canManage} />
         : tab === 'modules' ? <ModulesSettings canManage={canManage} />
         : !activeCompany ? (
-          <p className="text-sm text-[var(--color-text-muted)]">{t('settings.noCompany')}</p>
+          <p className="m-0 text-sm text-ink-muted">{t('settings.noCompany')}</p>
         ) : (
           <>
-            {!canManage && (
-              <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 rounded-lg">
-                {t('settings.ownerOnly')}
-              </p>
-            )}
+            {!canManage && <p className="m-0 rounded-[var(--radius-md)] bg-warning-soft px-3 py-2 text-[13px] text-ink">{t('settings.ownerOnly')}</p>}
 
-            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] divide-y divide-[var(--color-border)]">
+            <Card className="overflow-hidden">
               {INTEGRATIONS.map(item => (
-                <IntegrationRow
-                  key={`${activeCompany.id}:${item.id}`}
-                  integration={item}
-                  handler={handlers[item.id]}
-                  canManage={canManage}
-                />
+                <IntegrationRow key={`${activeCompany.id}:${item.id}`} integration={item} handler={handlers[item.id]} canManage={canManage} />
               ))}
-            </div>
+            </Card>
 
-            <p className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-muted)]">
-              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+            <p className="m-0 flex items-center gap-1.5 text-[12px] text-ink-muted">
+              <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-success" />
               {t('settings.secureNote')}
             </p>
 
@@ -135,23 +123,15 @@ function IntegrationRow({ integration, handler, canManage }: {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
-
   const provider = integration.providers.find(p => p.id === providerId) ?? integration.providers[0]
 
-  const close = () => {
-    setEditing(false)
-    setValue('')
-    setError('')
-  }
+  const close = () => { setEditing(false); setValue(''); setError('') }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     const key = value.trim()
     if (!key) return
-    if (provider.validate && !provider.validate(key)) {
-      setError(t('settings.invalidFormat'))
-      return
-    }
+    if (provider.validate && !provider.validate(key)) { setError(t('settings.invalidFormat')); return }
     setSaving(true)
     setError('')
     try {
@@ -167,77 +147,41 @@ function IntegrationRow({ integration, handler, canManage }: {
   }
 
   return (
-    <div className="px-4 py-3">
-      <div className="flex items-center gap-3">
-        <Icon className="w-4 h-4 text-indigo-500 shrink-0" />
+    <div className="border-b border-line px-4 py-3 last:border-b-0">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--radius-md)] bg-surface-sunken text-ink-muted"><Icon className="h-4 w-4" /></span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-[var(--color-text)]">{t(integration.nameKey)}</p>
-          <p className="text-xs text-[var(--color-text-muted)] truncate">{t(integration.descKey)}</p>
+          <p className="m-0 text-sm font-semibold text-ink">{t(integration.nameKey)}</p>
+          <p className="m-0 truncate text-[12px] text-ink-muted">{t(integration.descKey)}</p>
         </div>
-        {saved && <Check className="w-4 h-4 text-emerald-500 shrink-0" />}
-        <span className={cn('shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium', statusStyles[handler.status])}>
-          {handler.status === 'checking' && <Loader2 className="w-3 h-3 animate-spin" />}
-          {t(statusLabels[handler.status])}
-        </span>
+        {saved && <Check className="h-4 w-4 shrink-0 text-success" />}
+        <Badge tone={statusTone[handler.status]}>{t(statusLabels[handler.status])}</Badge>
         {!editing && (
-          <button
-            onClick={() => setEditing(true)}
-            disabled={!canManage}
-            className="shrink-0 px-3 py-1.5 rounded-lg border border-[var(--color-border)] text-xs font-medium text-[var(--color-text)] hover:bg-[var(--color-surface-alt)] transition-colors disabled:opacity-50"
-          >
+          <Button variant="secondary" size="sm" disabled={!canManage} onClick={() => setEditing(true)}>
             {handler.status === 'connected' ? t('settings.replaceKey') : t('settings.connect')}
-          </button>
+          </Button>
         )}
       </div>
 
       {editing && (
-        <form onSubmit={handleSubmit} className="mt-3 pl-7 space-y-2">
-          <div className="flex flex-col sm:flex-row gap-2">
-            <select
-              value={providerId}
-              onChange={e => setProviderId(e.target.value as typeof providerId)}
-              aria-label={t('settings.provider')}
-              className={cn(inputClass, 'sm:w-36')}
-            >
-              {integration.providers.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-            </select>
-            <input
-              type="password"
-              value={value}
-              onChange={e => setValue(e.target.value)}
-              placeholder={provider.placeholder}
-              aria-label={t('settings.keyLabel')}
-              autoComplete="off"
-              autoFocus
-              className={cn(inputClass, 'flex-1 min-w-0 font-mono')}
-            />
+        <form onSubmit={submit} className="mt-3 flex flex-col gap-2 sm:pl-11">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            {integration.providers.length > 1 && (
+              <select className="fc-input sm:w-36" aria-label={t('settings.provider')} value={providerId} onChange={e => setProviderId(e.target.value as typeof providerId)}>
+                {integration.providers.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </select>
+            )}
+            <input type="password" className="fc-input min-w-0 flex-1" style={{ fontFamily: 'var(--font-mono, monospace)' }} value={value}
+              placeholder={provider.placeholder} aria-label={t('settings.keyLabel')} autoComplete="off" autoFocus onChange={e => setValue(e.target.value)} />
             <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={close}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)]"
-              >
-                {t('settings.cancel')}
-              </button>
-              <button
-                type="submit"
-                disabled={saving || !value.trim()}
-                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors disabled:opacity-50"
-              >
-                {saving ? t('settings.saving') : t('settings.save')}
-              </button>
+              <Button variant="ghost" size="sm" onClick={close}>{t('settings.cancel')}</Button>
+              <Button type="submit" variant="primary" size="sm" loading={saving} disabled={!value.trim()}>{saving ? t('settings.saving') : t('settings.save')}</Button>
             </div>
           </div>
-          {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+          {error && <p className="m-0 text-[12px] text-danger">{error}</p>}
           {provider.helpUrl && (
-            <a
-              href={provider.helpUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
-            >
-              {t('settings.getKey')}
-              <ExternalLink className="w-3 h-3" />
+            <a href={provider.helpUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 self-start text-[12px] font-semibold text-brand hover:underline">
+              {t('settings.getKey')} ({provider.label})<ExternalLink className="h-3 w-3" />
             </a>
           )}
         </form>
