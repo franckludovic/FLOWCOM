@@ -595,6 +595,25 @@ export async function listDataverseRoadmapMilestones(companyId: string): Promise
   return rows.map((row) => row.fc_name).filter((id): id is string => Boolean(id))
 }
 
+// Ticks or unticks one milestone, without touching the others.
+export async function setDataverseRoadmapMilestone(companyId: string, milestoneId: string, done: boolean): Promise<void> {
+  const rows = unwrap(await Fc_roadmapmilestonesService.getAll({
+    filter: `_fc_company_value eq ${companyId} and fc_name eq '${escapeODataString(milestoneId)}'`,
+  }), 'load roadmap milestone')
+  if (done) {
+    if (rows.length) return
+    unwrap(await Fc_roadmapmilestonesService.create({
+      'fc_Company@odata.bind': lookup('fc_companies', companyId),
+      fc_name: milestoneId,
+      fc_completed: true,
+      fc_updatedat: new Date().toISOString(),
+      statecode: 0,
+    }), 'save roadmap milestone')
+  } else {
+    await Promise.all(rows.map(row => Fc_roadmapmilestonesService.delete(row.fc_roadmapmilestoneid)))
+  }
+}
+
 export async function replaceDataverseRoadmapMilestones(companyId: string, milestoneIds: string[]): Promise<void> {
   const current = unwrap(await Fc_roadmapmilestonesService.getAll({ filter: `_fc_company_value eq ${companyId}` }), 'load existing roadmap milestones')
   await Promise.all(current.map((row) => Fc_roadmapmilestonesService.delete(row.fc_roadmapmilestoneid)))

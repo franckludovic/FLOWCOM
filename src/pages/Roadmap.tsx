@@ -1,369 +1,250 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { ArrowRight, Check, Loader2, RefreshCw } from 'lucide-react'
 import { useI18n } from '@/contexts/I18nContext'
 import { useCompany } from '@/contexts/CompanyContext'
-import { Check, Target, Zap, Bot, RefreshCw, AlertCircle, Calendar, Flag, BookOpen, Loader2, Cpu } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { callModel, buildModelError } from '@/lib/model'
+import { useAuth } from '@/contexts/AuthContext'
+import { useAppSettings } from '@/contexts/AppSettingsContext'
+import { callModelJSON, buildModelError } from '@/lib/model'
 import { buildAiContext } from '@/lib/aiContext'
-import {
-  listDataverseLibraryItems,
-  listDataverseRoadmapMilestones,
-  replaceDataverseRoadmapMilestones,
-} from '@/lib/dataverse'
+import { listDataverseLibraryItems, listDataverseRoadmapMilestones, setDataverseRoadmapMilestone } from '@/lib/dataverse'
+import { listReports } from '@/lib/reports'
+import { Button, Card, CardBody, CardHeader, Spark } from '@/components/ui'
+import type { LibraryItem } from '@/types'
+import { cn } from '@/lib/utils'
 
-const MILESTONES = [
-  { id: 'm1', phase: 1 },
-  { id: 'm2', phase: 1 },
-  { id: 'm3', phase: 1 },
-  { id: 'm4', phase: 1 },
-  { id: 'm5', phase: 1 },
-  { id: 'm6', phase: 2 },
-  { id: 'm7', phase: 2 },
-  { id: 'm8', phase: 2 },
-  { id: 'm9', phase: 3 },
-  { id: 'm10', phase: 3 },
-  { id: 'm11', phase: 3 },
-  { id: 'm12', phase: 4 },
-  { id: 'm13', phase: 4 },
-  { id: 'm14', phase: 4 },
-  { id: 'm15', phase: 4 },
-] as const
+type MilestoneId = `m${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15}`
 
-const PHASES = [
-  { id: 1, icon: Target },
-  { id: 2, icon: Calendar },
-  { id: 3, icon: Zap },
-  { id: 4, icon: Flag },
+// Where each milestone gets done. Marketing pages only exist when the module is on.
+const MILESTONES: Array<{ id: MilestoneId; phase: 1 | 2 | 3 | 4; route: string; marketing?: boolean }> = [
+  { id: 'm1', phase: 1, route: '/onboarding?step=1' },
+  { id: 'm2', phase: 1, route: '/onboarding?step=2' },
+  { id: 'm3', phase: 1, route: '/onboarding?step=3' },
+  { id: 'm4', phase: 1, route: '/onboarding?step=4' },
+  { id: 'm5', phase: 1, route: '/onboarding?step=5' },
+  { id: 'm6', phase: 2, route: '/calendar', marketing: true },
+  { id: 'm7', phase: 2, route: '/content', marketing: true },
+  { id: 'm8', phase: 2, route: '/library', marketing: true },
+  { id: 'm9', phase: 3, route: '/content', marketing: true },
+  { id: 'm10', phase: 3, route: '/content', marketing: true },
+  { id: 'm11', phase: 3, route: '/content', marketing: true },
+  { id: 'm12', phase: 4, route: '/content', marketing: true },
+  { id: 'm13', phase: 4, route: '/studio', marketing: true },
+  { id: 'm14', phase: 4, route: '/report' },
+  { id: 'm15', phase: 4, route: '/calendar', marketing: true },
 ]
+const PHASES = [1, 2, 3, 4] as const
+
+const COPY = {
+  fr: {
+    title: 'Feuille de route', subtitle: 'Les étapes pour installer une présence sociale qui fonctionne, cochées automatiquement quand FlowCom le constate.',
+    progress: (d: number, t: number) => `${d} étape${d > 1 ? 's' : ''} sur ${t}`, done: 'Feuille de route terminée',
+    auto: 'constaté', manual: 'coché à la main', doIt: 'Y aller', tick: 'Cocher', untick: 'Décocher',
+    autoTitle: 'Cochée automatiquement à partir de vos données', manualTitle: 'Cliquez pour cocher ou décocher',
+    next: 'Prochaine étape', allDone: 'Toutes les étapes sont faites. Continuez à publier et à analyser chaque semaine.',
+    tips: 'Conseils', getTips: 'Des conseils pour cette étape', refresh: 'Autres conseils', thinking: 'Réflexion…',
+    saveError: "L'étape n'a pas pu être enregistrée",
+  },
+  en: {
+    title: 'Roadmap', subtitle: 'The steps to a social presence that works, ticked automatically when FlowCom sees them done.',
+    progress: (d: number, t: number) => `${d} of ${t} step${t > 1 ? 's' : ''}`, done: 'Roadmap complete',
+    auto: 'detected', manual: 'ticked by hand', doIt: 'Go', tick: 'Tick', untick: 'Untick',
+    autoTitle: 'Ticked automatically from your data', manualTitle: 'Click to tick or untick',
+    next: 'Next step', allDone: 'Every step is done. Keep publishing and reviewing every week.',
+    tips: 'Tips', getTips: 'Tips for this step', refresh: 'Other tips', thinking: 'Thinking…',
+    saveError: 'The step could not be saved',
+  },
+}
 
 export default function RoadmapPage() {
   const { t, lang } = useI18n()
+  const L: 'fr' | 'en' = lang === 'fr' ? 'fr' : 'en'
+  const c = COPY[L]
   const { activeCompany, products, segments, keyMessages } = useCompany()
-  
-  // Manual overrides stored in localStorage (user can still toggle manually)
-  const [manualChecked, setManualChecked] = useState<string[]>([])
-  const [libraryItems, setLibraryItems] = useState<Array<{ status: string; format?: string; contentType?: string; hook?: string }>>([])
-  const [dataVersion, setDataVersion] = useState(0)
-  const [advice, setAdvice] = useState<string>('')
-  const [loadingAdvice, setLoadingAdvice] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { apiKeyConfigured } = useAuth()
+  const { isEnabled } = useAppSettings()
+  const marketing = isEnabled('marketing-studio')
+
+  const [manual, setManual] = useState<string[]>([])
+  const [library, setLibrary] = useState<LibraryItem[]>([])
+  const [analysedReports, setAnalysedReports] = useState(0)
+  const [loaded, setLoaded] = useState(false)
+  const [error, setError] = useState('')
+  const [tips, setTips] = useState<string[]>([])
+  const [tipsFor, setTipsFor] = useState('')
+  const [loadingTips, setLoadingTips] = useState(false)
 
   useEffect(() => {
-    const onDataChange = () => setDataVersion(v => v + 1)
-    window.addEventListener('storage', onDataChange)
-    window.addEventListener('flowcom:data-updated', onDataChange)
-    return () => {
-      window.removeEventListener('storage', onDataChange)
-      window.removeEventListener('flowcom:data-updated', onDataChange)
-    }
-  }, [])
-
-  // Load saved roadmap progress and library data for this company.
-  useEffect(() => {
-    let cancelled = false
-    const loadRoadmapData = async () => {
-      if (!activeCompany) return
-      const [milestones, library] = await Promise.all([
-        listDataverseRoadmapMilestones(activeCompany.id),
-        listDataverseLibraryItems(activeCompany.id),
-      ])
-      if (cancelled) return
-      setManualChecked(milestones)
-      setLibraryItems(library)
-    }
-    loadRoadmapData()
-    return () => { cancelled = true }
-  }, [activeCompany?.id])
-
-  const milestoneProgress = useMemo<Record<string, { current: number; target: number }>>(() => {
-    const library = libraryItems
-    const validated = library.filter((i: any) => i.status === 'Validated' || i.status === 'Published')
-    const published = library.filter((i: any) => i.status === 'Published')
-    const videoCount = library.filter((i: any) => i.format?.toLowerCase() === 'video' || i.contentType?.toLowerCase() === 'video').length
-    const formats = new Set(library.map((i: any) => i.format || i.contentType).filter(Boolean))
-
-    return {
-      m3: { current: Math.min(products.length, 2), target: 2 },
-      m4: { current: Math.min(segments.length, 1), target: 1 },
-      m7: { current: Math.min(library.length, 4), target: 4 },
-      m8: { current: Math.min(validated.length, 4), target: 4 },
-      m9: { current: Math.min(Math.max(0, library.filter((i: any) => (i.hook || '').trim().length > 0).length), 3), target: 3 },
-      m10: { current: Math.min(videoCount, 1), target: 1 },
-      m11: { current: Math.min(formats.size, 2), target: 2 },
-      m13: { current: Math.min(published.length, 5), target: 5 },
-    }
-  }, [activeCompany, products, segments, libraryItems, dataVersion])
-
-  // Auto-detect which milestones are completed from real app data
-  const autoDetected = useMemo<string[]>(() => {
-    const detected: string[] = []
-    const c = activeCompany
-    const library = libraryItems
-
-    // Phase 1 - Foundations
-    // M1: Company profile complete (name + industry + description)
-    if (c?.name && c?.industry && c?.short_desc) detected.push('m1')
-    // M2: Mission, vision, values defined
-    if (c?.mission && c?.vision && c?.values) detected.push('m2')
-    // M3: At least 2 products/services
-    if (products.length >= 2) detected.push('m3')
-    // M4: At least 1 audience segment
-    if (segments.length >= 1) detected.push('m4')
-    // M5: Tone and channels defined
-    if (c?.tone && c?.channels) detected.push('m5')
-
-    // Phase 2-4 - based on Library
-    // M7: 4+ posts generated and saved (any status)
-    if (library.length >= 4) detected.push('m7')
-    // M8: 4+ posts saved to library (Validated or Published)
-    const validated = library.filter((i: any) => i.status === 'Validated' || i.status === 'Published')
-    if (validated.length >= 4) detected.push('m8')
-    // M10: At least 1 video script
-    const hasVideo = library.some((i: any) => i.format?.toLowerCase() === 'video' || i.contentType?.toLowerCase() === 'video')
-    if (hasVideo) detected.push('m10')
-    // M11: 2+ different formats used
-    const formats = new Set(library.map((i: any) => i.format || i.contentType).filter(Boolean))
-    if (formats.size >= 2) detected.push('m11')
-    // M13: 5+ posts published
-    const published = library.filter((i: any) => i.status === 'Published')
-    if (published.length >= 5) detected.push('m13')
-
-    return detected
-  }, [activeCompany, products, segments, libraryItems, dataVersion])
-
-  // Merge: auto-detected + manually checked (user can add manual ones for items we can't auto-detect)
-  const completed = useMemo(() => {
-    return Array.from(new Set([...autoDetected, ...manualChecked]))
-  }, [autoDetected, manualChecked])
-
-  // Save manual overrides
-  useEffect(() => {
+    let alive = true
     if (!activeCompany) return
-    const saveProgress = async () => {
-      await replaceDataverseRoadmapMilestones(activeCompany.id, manualChecked)
+    setLoaded(false)
+    Promise.all([
+      listDataverseRoadmapMilestones(activeCompany.id).catch(() => [] as string[]),
+      marketing ? listDataverseLibraryItems(activeCompany.id).catch(() => [] as LibraryItem[]) : Promise.resolve([] as LibraryItem[]),
+      listReports(activeCompany.id).catch(() => []),
+    ]).then(([ticked, items, reports]) => {
+      if (!alive) return
+      setManual(ticked)
+      setLibrary(items)
+      setAnalysedReports(reports.filter(r => r.analysis).length)
+      setLoaded(true)
+    })
+    return () => { alive = false }
+  }, [activeCompany?.id, marketing])
+
+  const milestones = MILESTONES.filter(m => !m.marketing || marketing)
+
+  // What FlowCom can see for itself, with progress where it can be counted.
+  const detected = useMemo(() => {
+    const co = activeCompany
+    const kept = library.filter(i => i.status === 'Validated' || i.status === 'Published')
+    const published = library.filter(i => i.status === 'Published')
+    const formats = new Set(library.map(i => i.format).filter(Boolean))
+    const hooks = library.filter(i => (i.hook || '').trim()).length
+    const counts: Partial<Record<MilestoneId, { current: number; target: number }>> = {
+      m3: { current: products.length, target: 2 },
+      m4: { current: segments.length, target: 1 },
+      m7: { current: library.length, target: 4 },
+      m8: { current: kept.length, target: 4 },
+      m9: { current: hooks, target: 3 },
+      m10: { current: library.filter(i => i.format === 'video').length, target: 1 },
+      m11: { current: formats.size, target: 2 },
+      m13: { current: published.length, target: 5 },
+      m14: { current: analysedReports, target: 4 },
     }
-    saveProgress()
-  }, [activeCompany?.id, manualChecked])
+    const done = new Set<MilestoneId>()
+    if (co?.name && co.industry && co.short_desc) done.add('m1')
+    if (co?.mission && co.vision && co.values) done.add('m2')
+    if (co?.tone && co.channels) done.add('m5')
+    for (const [id, n] of Object.entries(counts) as Array<[MilestoneId, { current: number; target: number }]>) if (n.current >= n.target) done.add(id)
+    return { done, counts }
+  }, [activeCompany, products, segments, library, analysedReports])
 
-  const toggleMilestone = (id: string) => {
-    // If auto-detected, can't uncheck; otherwise toggle manually
-    if (autoDetected.includes(id)) return // auto-managed, ignore click
-    setManualChecked(prev =>
-      prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]
-    )
-  }
+  const isDone = (id: MilestoneId) => detected.done.has(id) || manual.includes(id)
+  const doneCount = milestones.filter(m => isDone(m.id)).length
+  const next = milestones.find(m => !isDone(m.id))
 
-  const progress = Math.round((completed.length / MILESTONES.length) * 100)
-
-  const generateAdvice = async () => {
-    setLoadingAdvice(true)
-    setError(null)
-
-    const incomplete = MILESTONES.filter(m => !completed.includes(m.id))
-    const nextMilestone = incomplete.length > 0 ? incomplete[0] : null
-    
-    let nextStepText = nextMilestone ? t(`roadmap.${nextMilestone.id}` as any) : (lang === 'fr' ? 'Terminé !' : 'All done!')
-    
-    const context = `${buildAiContext({ company: activeCompany, products, segments, keyMessages })}
-  Completed ${completed.length}/${MILESTONES.length} milestones.
-  Next target milestone: ${nextStepText}`
-
-    const prompt = lang === 'fr' 
-      ? `Tu es le Coach IA stratégique de FlowCom. L'utilisateur a complété ${completed.length} sur ${MILESTONES.length} étapes. La prochaine étape est : "${nextStepText}". Donne 2 conseils très courts, ultra-pratiques et encourageants pour réussir cette étape. Ne liste pas d'autres étapes. Format Markdown. Garde un ton direct et pro.`
-      : `You are FlowCom's AI Strategic Coach. The user has completed ${completed.length} of ${MILESTONES.length} milestones. The next milestone is: "${nextStepText}". Give 2 very short, highly practical, and encouraging tips to achieve this milestone. Do not list other milestones. Use Markdown format. Keep it direct and professional.`
-
+  const toggle = async (id: MilestoneId) => {
+    if (!activeCompany || detected.done.has(id)) return
+    const on = !manual.includes(id)
+    setManual(prev => (on ? [...prev, id] : prev.filter(x => x !== id)))
+    setError('')
     try {
-      const res = await callModel(activeCompany?.id ?? '', [
-        { role: 'system', content: prompt },
-        { role: 'user', content: context }
-      ], { temperature: 0.6 })
-      setAdvice(res)
-    } catch (e) {
-      setError(t(buildModelError(e) as any))
-    } finally {
-      setLoadingAdvice(false)
+      await setDataverseRoadmapMilestone(activeCompany.id, id, on)
+      window.dispatchEvent(new Event('flowcom:data-updated'))
+    } catch (err) {
+      setManual(prev => (on ? prev.filter(x => x !== id) : [...prev, id]))
+      setError(`${c.saveError} : ${err instanceof Error ? err.message : String(err)}`)
     }
   }
+
+  const getTips = async () => {
+    if (!activeCompany || !next) return
+    setLoadingTips(true)
+    setError('')
+    const step = t(`roadmap.${next.id}` as Parameters<typeof t>[0])
+    try {
+      const result = await callModelJSON<{ tips: string[] }>(activeCompany.id, [
+        { role: 'system', content: `You are FlowCom's strategy coach. Give 2 very short, concrete, encouraging tips (max 30 words each) to complete the step below, tailored to the company. Plain text only, no markdown. Return JSON {"tips":["...","..."]}. Write in ${L === 'fr' ? 'French' : 'English'}.\nCompany context:\n${buildAiContext({ company: activeCompany, products, segments, keyMessages })}` },
+        { role: 'user', content: `Completed ${doneCount} of ${milestones.length} steps. Next step: "${step}".` },
+      ], { temperature: 0.6, max_tokens: 400, requiredKeys: ['tips'] })
+      // Shown as plain text: model output is never inserted as HTML.
+      setTips((Array.isArray(result.tips) ? result.tips : []).filter((s): s is string => typeof s === 'string').map(s => s.replace(/\*\*/g, '')).slice(0, 3))
+      setTipsFor(next.id)
+    } catch (err) {
+      setError(t(buildModelError(err) as Parameters<typeof t>[0]))
+    } finally {
+      setLoadingTips(false)
+    }
+  }
+
+  const pct = milestones.length ? Math.round((doneCount / milestones.length) * 100) : 0
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-[var(--color-bg)]">
-      <div className="flex-none p-6 border-b border-[var(--color-border)]">
-        <h1 className="text-2xl font-bold text-[var(--color-text)] mb-2">{t('roadmap.title')}</h1>
-        <p className="text-[var(--color-text-muted)] max-w-3xl mb-6">
-          {t('roadmap.subtitle')}
-        </p>
-
-        {/* Progress Bar */}
-        <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-4 shadow-sm">
-          <div className="flex justify-between items-end mb-2">
-            <div>
-              <p className="text-sm font-medium text-[var(--color-text-muted)] uppercase tracking-wider mb-1">
-                {t('roadmap.progress')}
-              </p>
-              <p className="text-2xl font-bold text-[var(--color-text)]">
-                {progress}% <span className="text-sm font-normal text-[var(--color-text-muted)] ml-1">({completed.length}/{MILESTONES.length} {t('roadmap.completed' as any)})</span>
-              </p>
-            </div>
-            {progress === 100 && (
-              <div className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-3 py-1 rounded-full text-sm font-medium flex items-center gap-1.5">
-                <Check className="w-4 h-4" />
-                {lang === 'fr' ? 'Feuille de route terminée' : 'Roadmap complete'}
-              </div>
-            )}
-          </div>
-          <div className="h-3 w-full bg-[var(--color-bg)] rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-indigo-600 transition-all duration-500 ease-out"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
+    <div className="min-h-full bg-surface-page">
+      <div className="mx-auto flex max-w-[var(--content-max)] flex-col gap-3.5 px-4 py-5 sm:px-6">
+        <div className="min-w-0">
+          <h1 className="m-0 text-[22px] font-bold leading-7 text-ink sm:text-[24px] sm:leading-[30px]" style={{ fontFamily: 'var(--font-display)' }}>{c.title}</h1>
+          <p className="m-0 mt-0.5 max-w-2xl text-sm text-ink-muted">{c.subtitle}</p>
         </div>
-      </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Phases Column */}
-          <div className="lg:col-span-2 space-y-6">
-            {PHASES.map((phase) => {
-              const phaseMilestones = MILESTONES.filter(m => m.phase === phase.id)
-              const completedInPhase = phaseMilestones.filter(m => completed.includes(m.id)).length
-              const isPhaseComplete = completedInPhase === phaseMilestones.length
-              const Icon = phase.icon
+        <Card className="px-4 py-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-[22px] font-bold leading-7 text-ink tabular-nums" style={{ fontFamily: 'var(--font-display)' }}>{pct} %</span>
+            <span className={cn('text-[13px]', pct === 100 ? 'font-semibold text-success' : 'text-ink-muted')}>{pct === 100 ? c.done : c.progress(doneCount, milestones.length)}</span>
+          </div>
+          <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-surface-sunken" aria-hidden="true">
+            <span className="block h-full rounded-full bg-brand transition-[width] duration-500" style={{ width: `${pct}%` }} />
+          </span>
+        </Card>
 
+        {error && <p className="m-0 rounded-[var(--radius-md)] bg-danger-soft px-3 py-2 text-[13px] text-danger">{error}</p>}
+
+        <div className="grid items-start gap-3.5 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          <div className="flex min-w-0 flex-col gap-3.5">
+            {PHASES.map(phase => {
+              const items = milestones.filter(m => m.phase === phase)
+              if (!items.length) return null
+              const inPhase = items.filter(m => isDone(m.id)).length
               return (
-                <div key={phase.id} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl overflow-hidden shadow-sm">
-                  <div className="p-4 border-b border-[var(--color-border)] bg-[var(--color-bg)] flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                      <div className={cn(
-                        "w-10 h-10 rounded-lg flex items-center justify-center transition-colors",
-                        isPhaseComplete 
-                          ? "bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400"
-                          : "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400"
-                      )}>
-                        <Icon className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-[var(--color-text)]">
-                          {t(`roadmap.phase${phase.id}Title` as any)}
-                        </h3>
-                        <p className="text-sm text-[var(--color-text-muted)]">
-                          {t(`roadmap.phase${phase.id}Desc` as any)}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-sm font-medium text-[var(--color-text-muted)] bg-[var(--color-surface)] px-2.5 py-1 rounded-md border border-[var(--color-border)]">
-                      {completedInPhase} / {phaseMilestones.length}
-                    </div>
-                  </div>
-                  <div className="p-2">
-                    {phaseMilestones.map((m) => {
-                      const isDone = completed.includes(m.id)
-                      const isAuto = autoDetected.includes(m.id)
-                      const quantity = milestoneProgress[m.id]
-                      const quantityLabel = quantity ? `${Math.min(quantity.current, quantity.target)}/${quantity.target}` : null
+                <Card key={phase}>
+                  <CardHeader title={t(`roadmap.phase${phase}Title` as Parameters<typeof t>[0])} subtitle={t(`roadmap.phase${phase}Desc` as Parameters<typeof t>[0])}
+                    actions={<span className={cn('text-[12px] font-semibold tabular-nums', inPhase === items.length ? 'text-success' : 'text-ink-muted')}>{inPhase}/{items.length}</span>} />
+                  <CardBody className="flex flex-col pt-1.5">
+                    {items.map(m => {
+                      const done = isDone(m.id)
+                      const auto = detected.done.has(m.id)
+                      const count = detected.counts[m.id]
                       return (
-                        <button
-                          key={m.id}
-                          onClick={() => toggleMilestone(m.id)}
-                          className={cn(
-                            "w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-left group",
-                            isAuto ? "cursor-default" : "hover:bg-[var(--color-bg)]"
-                          )}
-                          title={isAuto ? (lang === 'fr' ? 'Détecté automatiquement' : 'Auto-detected from your data') : undefined}
-                        >
-                          <div className={cn(
-                            "w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0",
-                            isDone && isAuto
-                              ? "bg-green-500 border-green-500 text-white"
-                              : isDone
-                              ? "bg-indigo-600 border-indigo-600 text-white"
-                              : "border-[var(--color-border)] group-hover:border-indigo-400"
-                          )}>
-                            {isDone && <Check className="w-3.5 h-3.5" />}
-                          </div>
-                          <span className={cn(
-                            "text-sm font-medium transition-colors flex-1",
-                            isDone ? "text-[var(--color-text-muted)] line-through" : "text-[var(--color-text)]"
-                          )}>
-                            {t(`roadmap.${m.id}` as any)}
+                        <div key={m.id} className="flex items-center gap-3 border-b border-line py-2 last:border-b-0">
+                          <button type="button" onClick={() => void toggle(m.id)} disabled={auto || !loaded}
+                            aria-pressed={done} aria-label={`${done ? c.untick : c.tick} : ${t(`roadmap.${m.id}` as Parameters<typeof t>[0])}`}
+                            title={auto ? c.autoTitle : c.manualTitle}
+                            className={cn('grid h-5 w-5 shrink-0 place-items-center rounded-full border transition-colors',
+                              done ? 'border-success bg-success text-surface-card' : 'border-line-strong hover:border-brand', auto && 'cursor-default')}>
+                            {done && <Check className="h-3 w-3" strokeWidth={3} />}
+                          </button>
+                          <span className={cn('min-w-0 flex-1 text-[13px]', done ? 'text-ink-muted' : 'text-ink')}>
+                            {t(`roadmap.${m.id}` as Parameters<typeof t>[0])}
+                            {done && <span className="ml-1.5 text-[11px] text-ink-subtle">· {auto ? c.auto : c.manual}</span>}
                           </span>
-                          {quantityLabel && (
-                            <span className="text-[10px] font-semibold text-[var(--color-text-muted)] bg-[var(--color-bg)] border border-[var(--color-border)] px-2 py-0.5 rounded-full shrink-0">
-                              {quantityLabel}
-                            </span>
-                          )}
-                          {isAuto && (
-                            <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2 py-0.5 rounded-full shrink-0">
-                              <Cpu className="w-3 h-3" />
-                              {lang === 'fr' ? 'Auto' : 'Auto'}
-                            </span>
-                          )}
-                        </button>
+                          {count && !done && <span className="shrink-0 text-[12px] text-ink-muted tabular-nums">{Math.min(count.current, count.target)}/{count.target}</span>}
+                          {!done && <Link to={m.route} className="fc-btn fc-btn--ghost fc-btn--sm shrink-0">{c.doIt}</Link>}
+                        </div>
                       )
                     })}
-                  </div>
-                </div>
+                  </CardBody>
+                </Card>
               )
             })}
           </div>
 
-          {/* AI Coach Column */}
-          <div className="lg:col-span-1">
-            <div className="sticky top-0 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold">
-                  <Bot className="w-5 h-5" />
-                  {t('roadmap.coachTitle' as any)}
-                </div>
-                <button 
-                  onClick={generateAdvice}
-                  disabled={loadingAdvice}
-                  className="p-1.5 rounded-lg hover:bg-[var(--color-bg)] text-[var(--color-text-muted)] transition-colors"
-                  title={t('roadmap.coachRefresh' as any)}
-                >
-                  <RefreshCw className={cn("w-4 h-4", loadingAdvice && "animate-spin")} />
-                </button>
-              </div>
-
-              {error && (
-                <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-900/50 flex items-start gap-2 text-red-600 dark:text-red-400 text-sm">
-                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              <div className="prose prose-sm dark:prose-invert">
-                {loadingAdvice ? (
-                  <div className="space-y-4 animate-pulse">
-                    <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)] mb-2">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      {t('roadmap.coachLoading' as any)}
+          <Card className="lg:sticky lg:top-4">
+            <CardHeader title={c.next} />
+            <CardBody className="flex flex-col gap-3">
+              {!loaded ? <Loader2 className="h-4 w-4 animate-spin text-ink-muted" /> : !next ? (
+                <p className="m-0 text-[13px] text-ink-muted">{c.allDone}</p>
+              ) : (
+                <>
+                  <p className="m-0 text-[15px] font-semibold leading-5 text-ink">{t(`roadmap.${next.id}` as Parameters<typeof t>[0])}</p>
+                  <Link to={next.route} className="fc-btn fc-btn--primary fc-btn--sm self-start">{c.doIt}<ArrowRight /></Link>
+                  {apiKeyConfigured && (
+                    <div className="border-t border-line pt-3">
+                      {tips.length > 0 && tipsFor === next.id ? (
+                        <>
+                          <p className="m-0 mb-1.5 flex items-center gap-1.5 text-[13px] font-bold text-ink"><Spark className="h-3.5 w-3.5" />{c.tips}</p>
+                          <ul className="m-0 flex flex-col gap-1.5 pl-[18px] text-[13px] leading-[19px] text-ink-muted">{tips.map(tip => <li key={tip}>{tip}</li>)}</ul>
+                          <Button variant="ghost" size="sm" className="mt-2" icon={<RefreshCw className={cn(loadingTips && 'animate-spin')} />} disabled={loadingTips} onClick={() => void getTips()}>{c.refresh}</Button>
+                        </>
+                      ) : (
+                        <Button variant="ghost" size="sm" icon={<Spark />} loading={loadingTips} onClick={() => void getTips()}>{loadingTips ? c.thinking : c.getTips}</Button>
+                      )}
                     </div>
-                    <div className="h-4 bg-[var(--color-border)] rounded w-3/4"></div>
-                    <div className="h-4 bg-[var(--color-border)] rounded w-full"></div>
-                    <div className="h-4 bg-[var(--color-border)] rounded w-5/6"></div>
-                    <div className="h-4 bg-[var(--color-border)] rounded w-full mt-4"></div>
-                    <div className="h-4 bg-[var(--color-border)] rounded w-2/3"></div>
-                  </div>
-                ) : advice ? (
-                  <div className="text-[var(--color-text)] whitespace-pre-wrap leading-relaxed" dangerouslySetInnerHTML={{ __html: advice.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
-                ) : (
-                  <div className="text-center py-6 text-[var(--color-text-muted)]">
-                    <BookOpen className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                    <p>{t('roadmap.coachEmpty' as any)}</p>
-                    <button
-                      onClick={generateAdvice}
-                      className="mt-4 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
-                    >
-                      {t('roadmap.coachRefresh' as any)}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
+                  )}
+                </>
+              )}
+            </CardBody>
+          </Card>
         </div>
       </div>
     </div>
