@@ -2,6 +2,7 @@
 // (pages, sidebar entries and their section, assistant tools). The router, the
 // sidebar and the assistant read it, filtered by the installation's enabled
 // modules. See docs/product-brief.md, "How modules compose".
+import { ManagerOnly } from '@/components/ManagerOnly'
 import type { ReactNode } from 'react'
 import {
   BarChart2, BookOpen, Brain, CalendarDays, FileText, History, LayoutDashboard, Map, Megaphone, Send, UserCircle,
@@ -63,7 +64,7 @@ export const MODULES: ModuleDefinition[] = [
       { path: '/workspace', element: <WorkspacePage /> },
       { path: '/memory', element: <MemoryPage /> },
       { path: '/onboarding', element: <OnboardingPage /> },
-      { path: '/settings', element: <SettingsPage /> },
+      { path: '/settings', element: <ManagerOnly><SettingsPage /></ManagerOnly> },
     ],
     tools: ['get_company_context'],
   },

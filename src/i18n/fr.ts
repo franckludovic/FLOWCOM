@@ -381,7 +381,7 @@ const fr = {
   'report.totalLeads': 'Leads totaux',
   // Errors
   'error.429': 'Limite de requêtes atteinte, veuillez réessayer dans quelques secondes.',
-  'error.noKey': "Clé API du modèle IA manquante. Ajoutez-en une dans les Paramètres.",
+  'error.noKey': "L'IA n'est pas encore activée pour votre espace. Contactez votre gestionnaire FlowCom.",
   'error.invalidKey': "Clé API du modèle IA invalide. Vérifiez-la dans les Paramètres.",
   'error.network': "Impossible de contacter le fournisseur IA. Vérifiez votre connexion.",
   'error.noModel': "Aucun modèle compatible disponible pour cette clé.",

@@ -383,7 +383,7 @@ const en: Record<TranslationKey, string> = {
   'report.totalLeads': 'Total leads',
   // Errors
   'error.429': 'Rate limit reached, please try again in a few seconds.',
-  'error.noKey': "Missing AI model API key. Add one in Settings.",
+  'error.noKey': "AI is not enabled for your workspace yet. Contact your FlowCom manager.",
   'error.invalidKey': "Invalid or unauthorized AI model API key. Check it in Settings.",
   'error.network': "Could not reach the AI provider. Check your internet connection.",
   'error.noModel': "No compatible model is available for this key.",

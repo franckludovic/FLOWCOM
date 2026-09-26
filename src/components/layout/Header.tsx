@@ -7,6 +7,7 @@ import { useCompany } from '@/contexts/CompanyContext'
 import { useAppSettings } from '@/contexts/AppSettingsContext'
 import { listDataverseCompanyMembers } from '@/lib/dataverse'
 import { Badge, Button, Spark } from '@/components/ui'
+import { useIsManager } from '@/lib/managers'
 import { cn } from '@/lib/utils'
 
 interface HeaderProps {
@@ -22,6 +23,8 @@ export default function Header({ onToggleMobileMenu, onToggleAssistant, assistan
   const { theme, toggle: toggleTheme } = useTheme()
   const { companies, activeCompany, setActiveCompany } = useCompany()
   const { isEnabled } = useAppSettings()
+  // Settings (appearance, integrations, modules) are for FlowCom's team only.
+  const manager = useIsManager()
   const fr = lang === 'fr'
 
   const [companyMenuOpen, setCompanyMenuOpen] = useState(false)
@@ -100,8 +103,10 @@ export default function Header({ onToggleMobileMenu, onToggleAssistant, assistan
             <span className="hidden sm:inline">Assistant</span>
           </button>
         )}
-        <Button variant="ghost" iconOnly size="sm" icon={<Settings />} onClick={() => navigate('/settings')} aria-label={t('nav.settings')}
-          className={cn(pathname === '/settings' && 'bg-brand-soft text-brand-ink')} />
+        {manager && (
+          <Button variant="ghost" iconOnly size="sm" icon={<Settings />} onClick={() => navigate('/settings')} aria-label={t('nav.settings')}
+            className={cn(pathname === '/settings' && 'bg-brand-soft text-brand-ink')} />
+        )}
       </div>
 
       {/* Team */}
