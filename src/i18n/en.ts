@@ -389,7 +389,7 @@ const en: Record<TranslationKey, string> = {
   'error.noModel': "No compatible model is available for this key.",
   'error.noIdeas': 'The AI returned no ideas. Try again or adjust the options.',
   'error.badResponse': 'The AI returned an unexpected response. Please try again.',
-  'error.generic': 'Generation failed.',
+  'error.generic': 'The AI did not return a complete answer. Try again in a moment.',
   // Toast
   'toast.companySaved': 'Company saved successfully',
   'toast.companySaveError': 'Error saving. Check your connection.',

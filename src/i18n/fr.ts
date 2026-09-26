@@ -387,7 +387,7 @@ const fr = {
   'error.noModel': "Aucun modèle compatible disponible pour cette clé.",
   'error.noIdeas': "L'IA n'a renvoyé aucune idée. Réessayez.",
   'error.badResponse': "L'IA a renvoyé une réponse inattendue.",
-  'error.generic': 'La génération a échoué.',
+  'error.generic': "L'IA n'a pas renvoyé de réponse complète. Réessayez dans un instant.",
   // Toast
   'toast.companySaved': 'Entreprise enregistrée avec succès',
   'toast.companySaveError': "Erreur lors de l'enregistrement.",

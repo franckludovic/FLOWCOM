@@ -40,6 +40,8 @@ const COPY = {
     needReach: 'Saisissez la portée d’au moins un post avant l’analyse.',
     sections: { whatWorked: 'Ce qui a marché', whatToStop: 'À arrêter', nextWeek: 'La semaine prochaine', learnings: 'À retenir' } as Record<keyof ReportAnalysis, string>,
     loading: 'Chargement des posts…', network: 'Réseau', video: 'vidéo',
+    exportPdf: 'Exporter en PDF', exportHint: 'Dans la fenêtre d’impression, choisissez « Enregistrer au format PDF ».',
+    needScored: 'Ajoutez aussi les commentaires, partages ou enregistrements pour calculer le score.', printedOn: 'Rapport établi le', total: 'Total',
   },
   en: {
     title: 'Weekly report', week: (a: string, b: string) => `Week of ${a} to ${b}`, prevWeek: 'Previous week', nextWeek: 'Next week',
@@ -59,6 +61,8 @@ const COPY = {
     needReach: "Enter at least one post's reach before the analysis.",
     sections: { whatWorked: 'What worked', whatToStop: 'What to stop', nextWeek: 'Next week', learnings: 'Keep in mind' } as Record<keyof ReportAnalysis, string>,
     loading: 'Loading posts…', network: 'Network', video: 'video',
+    exportPdf: 'Export as PDF', exportHint: 'In the print window, choose “Save as PDF”.',
+    needScored: 'Also enter comments, shares or saves to compute the score.', printedOn: 'Report produced on', total: 'Total',
   },
 }
 const SECTION_DOT: Record<keyof ReportAnalysis, string> = { whatWorked: 'var(--success)', whatToStop: 'var(--danger)', nextWeek: 'var(--info)', learnings: 'var(--accent)' }
@@ -243,7 +247,7 @@ export default function ReportPage() {
       const result = await callModelJSON<ReportAnalysis>(activeCompany.id, [
         { role: 'system', content: `You are a social media analyst reviewing one week of organic posts. Use ONLY the figures given; "not entered" means unknown, not zero. Return JSON {"whatWorked":["..."],"whatToStop":["..."],"nextWeek":["..."],"learnings":["..."]}, 1 to 3 short points each (max 20 words), each citing the figure or post it comes from. "learnings" are durable lessons about this audience that should guide future content. If the data is too thin to judge, say so in whatWorked and keep the other lists short. Write in ${L === 'fr' ? 'French' : 'English'}, never quote field names like "reach=".\nCompany context:\n${buildAiContext({ company: activeCompany, products, segments, keyMessages })}` },
         { role: 'user', content: `Week ${weekStart} to ${lastDay}\n${scoreLine}\nPosts:\n${rows}` },
-      ], { temperature: 0.3, max_tokens: 900, requiredKeys: ['whatWorked', 'whatToStop', 'nextWeek', 'learnings'] })
+      ], { temperature: 0.3, max_tokens: 2400, requiredKeys: ['whatWorked', 'whatToStop', 'nextWeek', 'learnings'] })
       const clean = (list: unknown) => (Array.isArray(list) ? list.filter((s): s is string => typeof s === 'string' && Boolean(s.trim())).slice(0, 3) : [])
       const next = { whatWorked: clean(result.whatWorked), whatToStop: clean(result.whatToStop), nextWeek: clean(result.nextWeek), learnings: clean(result.learnings) }
       dirty.current = true
@@ -256,13 +260,23 @@ export default function ReportPage() {
     }
   }
 
+  const exportPdf = () => {
+    const previousTitle = document.title
+    document.title = `${activeCompany?.name ?? 'FlowCom'} · ${c.week(fmt(weekStart), fmt(lastDay))}`
+    window.addEventListener('afterprint', () => { document.title = previousTitle }, { once: true })
+    window.print()
+  }
+
   const completeCount = posts.filter(p => p.values.reach !== null).length
+  const reachEntered = posts.some(p => (p.values.reach ?? 0) > 0)
   const saveLabel = saveState === 'saving' ? c.saving : saveState === 'saved' ? c.saved : saveState === 'error' ? c.saveError : c.unsaved
   const others = reports.filter(r => r.weekStart !== weekStart)
 
   return (
-    <div className="min-h-full bg-surface-page">
-      <div className="mx-auto flex max-w-[var(--content-max)] flex-col gap-3.5 px-4 py-5 sm:px-6">
+    <div className="min-h-full bg-surface-page print:bg-white">
+      <ReportPrint c={c} company={activeCompany?.name ?? ''} week={c.week(fmt(weekStart), fmt(lastDay))} posts={posts} score={score} analysis={analysis}
+        printedOn={new Date().toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })} dateLabel={fmt} />
+      <div className="mx-auto flex max-w-[var(--content-max)] flex-col gap-3.5 px-4 py-5 sm:px-6 print:hidden">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
             <h1 className="m-0 text-[22px] font-bold leading-7 text-ink sm:text-[24px] sm:leading-[30px]" style={{ fontFamily: 'var(--font-display)' }}>{c.title}</h1>
@@ -276,6 +290,7 @@ export default function ReportPage() {
               <span className="min-w-[180px] text-center text-[13px] font-bold text-ink" style={{ fontFamily: 'var(--font-display)' }}>{c.week(fmt(weekStart, weekStart.slice(5, 7) !== lastDay.slice(5, 7)), fmt(lastDay))}</span>
               <Button variant="ghost" size="sm" iconOnly icon={<ChevronRight />} aria-label={c.nextWeek} disabled={weekStart >= currentMonday} onClick={() => setWeekStart(w => shiftWeek(w, 1))} />
             </div>
+            <Button variant="secondary" size="sm" onClick={exportPdf} disabled={!posts.length} title={c.exportHint}>{c.exportPdf}</Button>
             {others.length > 0 && (
               <select className="fc-input h-8 w-auto" aria-label={c.jump} value="" onChange={e => e.target.value && setWeekStart(e.target.value)}>
                 <option value="">{c.previous(others.length)}</option>
@@ -287,7 +302,7 @@ export default function ReportPage() {
 
         {error && <p className="m-0 rounded-[var(--radius-md)] bg-danger-soft px-3 py-2 text-[13px] text-danger">{error}</p>}
 
-        <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <div className="grid gap-3.5 2xl:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)]">
           <Card className="min-w-0">
             <CardHeader title={c.posts} subtitle={loadingPosts ? c.loading : c.complete(completeCount, posts.length)} actions={<>
               <Button variant="ghost" size="sm" icon={<RefreshCw className={cn(loadingPosts && 'animate-spin')} />} disabled={loadingPosts || !orgId} onClick={() => void refreshList()}>{c.fetch}</Button>
@@ -300,11 +315,11 @@ export default function ReportPage() {
                 <p className="m-0 py-6 text-center text-[13px] text-ink-muted">{c.noPosts}</p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[760px] border-collapse text-[13px]">
+                  <table className="w-full min-w-[700px] border-collapse text-[13px]">
                     <thead>
                       <tr className="border-b border-line text-[10px] font-bold uppercase tracking-[0.05em] text-ink-muted">
                         <th className="py-1.5 pr-2 text-left">Post</th>
-                        {REPORT_METRICS.map(m => <th key={m} className="w-[64px] px-0.5 py-1.5 text-right" title={c.metricsFull[m]}>{c.metrics[m]}</th>)}
+                        {REPORT_METRICS.map(m => <th key={m} className="w-[58px] px-0.5 py-1.5 text-right leading-[13px]" title={c.metricsFull[m]}>{c.metrics[m]}</th>)}
                         <th className="w-8" aria-hidden="true" />
                       </tr>
                     </thead>
@@ -353,11 +368,11 @@ export default function ReportPage() {
             </CardBody>
           </Card>
 
-          <div className="flex min-w-0 flex-col gap-3.5">
+          <div className="grid min-w-0 content-start gap-3.5 md:grid-cols-2 2xl:grid-cols-1">
             <Card>
               <CardHeader title={c.score} actions={previousScore?.max ? <span className="text-[12px] text-ink-muted">{c.prevScore(previousScore.total, previousScore.max)}</span> : undefined} />
               <CardBody>
-                {!score.max ? <p className="m-0 text-[13px] text-ink-muted">{c.noScore}</p> : (
+                {!score.max ? <p className="m-0 text-[13px] text-ink-muted">{reachEntered ? c.needScored : c.noScore}</p> : (
                   <div className="grid grid-cols-[92px_minmax(0,1fr)] items-center gap-3.5">
                     <div>
                       <span className="text-[36px] font-bold leading-10 text-ink" style={{ fontFamily: 'var(--font-display)' }}>{score.total}</span>
@@ -403,6 +418,66 @@ export default function ReportPage() {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// The printable report: hidden on screen, the only thing printed.
+function ReportPrint({ c, company, week, posts, score, analysis, printedOn, dateLabel }: {
+  c: typeof COPY.fr; company: string; week: string; posts: ReportPost[]
+  score: ReturnType<typeof scoreWeek>; analysis: ReportAnalysis | null; printedOn: string; dateLabel: (d: string) => string
+}) {
+  const total = (m: ReportMetric) => posts.some(p => p.values[m] !== null) ? posts.reduce((t, p) => t + (p.values[m] ?? 0), 0).toLocaleString() : '—'
+  return (
+    <div className="hidden bg-white text-[10pt] leading-snug text-black print:block">
+      <header className="mb-4 border-b border-black/20 pb-3">
+        <p className="m-0 text-[9pt] uppercase tracking-wide text-black/60">{company}</p>
+        <h1 className="m-0 text-[18pt] font-bold" style={{ fontFamily: 'var(--font-display)' }}>{c.title}</h1>
+        <p className="m-0 text-[11pt]">{week}</p>
+      </header>
+
+      {score.max > 0 && (
+        <section className="mb-4 flex items-start gap-8">
+          <div><p className="m-0 text-[9pt] text-black/60">{c.score}</p><p className="m-0 text-[20pt] font-bold">{score.total}<span className="text-[12pt] text-black/60">/{score.max}</span></p></div>
+          <table className="border-collapse text-[9pt]"><tbody>
+            {SCORE_AXES.map(axis => <tr key={axis}><td className="pr-4 text-black/70">{c.axes[axis]}</td><td className="font-bold">{score.breakdown[axis] ?? '—'}{score.breakdown[axis] ? '/5' : ''}</td></tr>)}
+          </tbody></table>
+        </section>
+      )}
+
+      <table className="mb-4 w-full border-collapse text-[9pt]">
+        <thead>
+          <tr className="border-b border-black/40 text-left">
+            <th className="py-1 pr-2">Post</th>
+            {REPORT_METRICS.map(m => <th key={m} className="px-1 py-1 text-right">{c.metricsFull[m]}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {posts.map(p => (
+            <tr key={p.id} className="border-b border-black/10 align-top" style={{ breakInside: 'avoid' }}>
+              <td className="py-1 pr-2">{p.title || '—'}<br /><span className="text-black/60">{CHANNEL_MAP[p.network]?.label ?? p.network} · {dateLabel(p.date)}</span></td>
+              {REPORT_METRICS.map(m => <td key={m} className="px-1 py-1 text-right tabular-nums">{p.values[m] ?? '—'}</td>)}
+            </tr>
+          ))}
+          <tr className="border-t border-black/40 font-bold">
+            <td className="py-1 pr-2">{c.total}</td>
+            {REPORT_METRICS.map(m => <td key={m} className="px-1 py-1 text-right tabular-nums">{total(m)}</td>)}
+          </tr>
+        </tbody>
+      </table>
+
+      {analysis && (
+        <section className="grid grid-cols-2 gap-x-8 gap-y-3">
+          {(Object.keys(c.sections) as Array<keyof ReportAnalysis>).map(key => analysis[key].length > 0 && (
+            <div key={key} style={{ breakInside: 'avoid' }}>
+              <h2 className="m-0 mb-1 text-[11pt] font-bold">{c.sections[key]}</h2>
+              <ul className="m-0 pl-4">{analysis[key].map(item => <li key={item}>{item}</li>)}</ul>
+            </div>
+          ))}
+        </section>
+      )}
+
+      <p className="m-0 mt-6 text-[8pt] text-black/50">{c.printedOn} {printedOn} · FlowCom</p>
     </div>
   )
 }

@@ -126,3 +126,9 @@ textarea.fc-input { height: auto; min-height: 88px; padding: 10px 12px; font-siz
 .fc-muted { color: var(--ink-muted); }
 .fc-small { font-size: 13px; line-height: 19px; }
 
+/* Printing (and "save as PDF"): only the page's content, flowing over sheets. */
+@media print {
+  @page { margin: 14mm; }
+  .fc-no-print { display: none !important; }
+  html, body, #root, .fc-print-root { height: auto !important; overflow: visible !important; display: block !important; background: #fff !important; }
+}

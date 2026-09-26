@@ -42,16 +42,22 @@ export async function callModelJSON<T>(
   messages: ModelMessage[],
   options?: ModelOptions
 ): Promise<T> {
-  const { data } = await invokeModel({ companyId, messages, options: { ...options, json: true } })
-
-  const raw = data?.content ?? '{}'
-  try {
-    const parsed: unknown = JSON.parse(raw)
-    if (!validateModelJSON(parsed, options?.requiredKeys)) throw new Error('AI returned incomplete JSON')
-    return parsed as T
-  } catch {
-    throw new Error('AI returned invalid or incomplete JSON')
+  const attempt = async (maxTokens: number | undefined): Promise<T | null> => {
+    const { data } = await invokeModel({ companyId, messages, options: { ...options, max_tokens: maxTokens, json: true } })
+    try {
+      const parsed: unknown = JSON.parse(data?.content ?? '{}')
+      return validateModelJSON(parsed, options?.requiredKeys) ? parsed as T : null
+    } catch {
+      return null
+    }
   }
+  // Reasoning models spend part of the budget thinking, so an answer can come
+  // back cut off. Try once more with twice the room before giving up.
+  const first = await attempt(options?.max_tokens)
+  if (first) return first
+  const second = await attempt(Math.min(8192, (options?.max_tokens ?? 2048) * 2))
+  if (second) return second
+  throw new Error('AI returned invalid or incomplete JSON')
 }
 
 async function invokeModel(body: { companyId: string; messages: ModelMessage[]; options?: ModelOptions }) {
