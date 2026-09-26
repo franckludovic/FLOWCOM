@@ -625,6 +625,8 @@ export async function getDataverseWorkspaceCounts(companyId: string) {
     library: libraryRows.length,
     roadmap: roadmapRows.length,
     publishedLast30: libraryRows.filter((row) => row.fc_statusname === 'Published' && Date.parse(createdAt(row)) >= now - 30 * 24 * 60 * 60 * 1000).length,
+    // Same measure over the 30 days before, for a like-for-like comparison.
+    publishedPrev30: libraryRows.filter((row) => row.fc_statusname === 'Published' && Date.parse(createdAt(row)) < now - 30 * 24 * 60 * 60 * 1000 && Date.parse(createdAt(row)) >= now - 60 * 24 * 60 * 60 * 1000).length,
     staleDrafts: libraryRows.filter((row) => row.fc_statusname === 'Draft' && Date.parse(createdAt(row)) <= now - 7 * 24 * 60 * 60 * 1000).length,
     hasReportThisWeek: reportRows.some((row) => Date.parse(createdAt(row)) >= weekStart.getTime()),
   }
