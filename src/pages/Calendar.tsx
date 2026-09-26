@@ -1,876 +1,866 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  CalendarDays, Sparkles, Trash2, ChevronLeft, ChevronRight, ChevronDown,
-  LayoutList, LayoutGrid, Zap, AlertCircle, FileText, Clapperboard, Image,
-  Wand2, Loader2, Megaphone
-} from 'lucide-react'
-import {
-  FaLinkedinIn, FaInstagram, FaTiktok, FaFacebookF,
-  FaYoutube, FaXTwitter, FaWhatsapp, FaEnvelope, FaWordpress, FaPodcast,
-} from 'react-icons/fa6'
+import { ChevronLeft, ChevronRight, Loader2, Minus, Plus, Trash2 } from 'lucide-react'
 import { useI18n } from '@/contexts/I18nContext'
 import { useCompany } from '@/contexts/CompanyContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { callModelJSON, buildModelError } from '@/lib/model'
 import { buildAiContext } from '@/lib/aiContext'
-import { cn } from '@/lib/utils'
 import { setContentCampaign } from '@/lib/campaigns'
-import { buildCampaignContext, campaignWarnings, CONTENT_CHANNEL, useCampaignOptions } from '@/lib/campaignContext'
+import { buildCampaignContext, CONTENT_CHANNEL, useCampaignOptions } from '@/lib/campaignContext'
 import {
-  createDataverseCalendarItem,
-  deleteDataverseCalendarItem,
-  listDataverseCalendarItems,
-  replaceDataverseCalendarMonth,
-  updateDataverseCalendarItem,
+  createDataverseCalendarItem, deleteDataverseCalendarItem, listDataverseCalendarItems, updateDataverseCalendarItem,
 } from '@/lib/dataverse'
+import { CHANNELS, CHANNEL_MAP, ChannelIcons, FORMATS, FORMAT_MAP, networkOf, parseChannels, suggestedFormat, type ContentFormat } from '@/lib/channels'
+import {
+  Badge, Button, Card, CardBody, CardHeader, Chip, InsightCard, SelectField, Sheet, Spark, TextField, type Tone,
+} from '@/components/ui'
+import { cn } from '@/lib/utils'
 
-// ─── Types ─────────────────────────────────────────────────────
+type Status = 'idea' | 'scheduled' | 'published'
+
 interface CalendarItem {
   id: string
   date: string
   topic: string
   goal: string
-  format: 'Post' | 'Carousel' | 'Video' | 'Story'
+  format: ContentFormat
   channel: string
-  status: 'idea' | 'scheduled' | 'published'
+  status: Status
   campaign_id?: string | null
 }
 
-// ─── Channel config ────────────────────────────────────────────
-const CHANNELS = [
-  { value: 'linkedin',   icon: FaLinkedinIn,  color: '#0A66C2', label: 'LinkedIn' },
-  { value: 'facebook',   icon: FaFacebookF,   color: '#1877F2', label: 'Facebook' },
-  { value: 'instagram',  icon: FaInstagram,   color: '#E4405F', label: 'Instagram' },
-  { value: 'tiktok',     icon: FaTiktok,      color: '#111827', label: 'TikTok' },
-  { value: 'youtube',    icon: FaYoutube,     color: '#FF0000', label: 'YouTube' },
-  { value: 'twitter',    icon: FaXTwitter,    color: '#111827', label: 'X (Twitter)' },
-  { value: 'whatsapp',   icon: FaWhatsapp,    color: '#25D366', label: 'WhatsApp' },
-  { value: 'newsletter', icon: FaEnvelope,    color: '#FF6719', label: 'Newsletter' },
-  { value: 'blog',       icon: FaWordpress,   color: '#21759B', label: 'Blog' },
-  { value: 'podcast',    icon: FaPodcast,     color: '#872EC4', label: 'Podcast' },
-]
-const CHANNEL_MAP = Object.fromEntries(CHANNELS.map(c => [c.value, c]))
+type Draft = Omit<CalendarItem, 'id'> & { id?: string }
 
-const GOALS = {
-  fr: ['Visibilité', 'Leads', 'Engagement', 'Conversion', 'Éducation', 'Fidélisation'],
-  en: ['Visibility', 'Leads', 'Engagement', 'Conversion', 'Education', 'Retention'],
+const COPY = {
+  fr: {
+    title: 'Calendrier éditorial', posts: 'posts', ideasToWrite: 'idées à rédiger',
+    today: "Aujourd'hui", month: 'Mois', list: 'Liste', newIdea: 'Nouvelle idée', plan: "Planifier avec l'IA",
+    allCampaigns: 'Toutes les campagnes', noCampaign: 'Sans campagne',
+    status: { idea: 'Idée', scheduled: 'Programmé', published: 'Publié' } as Record<Status, string>,
+    statusPlural: { idea: 'idées', scheduled: 'programmés', published: 'publiés' } as Record<Status, string>,
+    weekdays: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'], more: 'autre(s)',
+    analysis: 'Analyse du mois', analysing: 'Analyse du mois…', analysisOk: 'Rien à signaler ce mois-ci',
+    analysisOkText: 'La répartition des posts, des réseaux et des objectifs est équilibrée.', proposePosts: 'Proposer des posts',
+    mix: 'Répartition par réseau', upcoming: 'À venir', nothingUpcoming: 'Aucun post prévu après aujourd\'hui.',
+    empty: 'Aucun post ce mois-ci.', emptyHint: 'Planifiez le mois avec l\'IA ou ajoutez une idée.',
+    week: 'Semaine du', dayPosts: 'posts ce jour-là', addToDay: 'Ajouter une idée ce jour-là',
+    planTitle: "Planifier avec l'IA", planSub: 'selon votre mémoire d\'entreprise', campaign: 'Campagne', goals: 'Objectifs',
+    networks: 'Réseaux', rhythm: 'Rythme', perWeek: 'posts par semaine', theme: 'Thème du mois (optionnel)',
+    themePlaceholder: 'Par exemple : réussir sa reconversion', about: 'Environ', ideasFor: 'idées pour',
+    added: 'Elles sont ajoutées au calendrier sans effacer vos posts existants.', generate: 'Générer les idées', generating: 'Génération…',
+    campaignHint: "Les idées suivent le brief, l'audience et la zone de la campagne",
+    clearMonth: 'Vider le mois', confirmClear: 'Supprimer tous les posts de ce mois ? Cette action est définitive.',
+    cancel: 'Annuler', save: 'Enregistrer', delete: 'Supprimer', confirmDelete: 'Supprimer ce post du calendrier ?',
+    topic: 'Sujet', goal: 'Objectif', date: 'Date', format: 'Format', network: 'Réseau', networksHint: 'Un post par réseau, rédigé pour ce réseau.',
+    adapt: 'Adapter pour un autre réseau', adaptHint: 'Crée une copie de cette idée pour le réseau choisi ; le texte sera rédigé pour ce réseau.',
+    notWritten: 'Pas encore rédigé', notWrittenText: "L'IA peut rédiger ce post à partir du sujet, de l'objectif et du brief de la campagne.",
+    write: "Rédiger avec l'IA", newIdeaTitle: 'Nouvelle idée', needNetwork: 'Choisissez au moins un réseau.', needTopic: 'Indiquez un sujet.',
+    goalOptions: ['Visibilité', 'Prospects', 'Engagement', 'Conversion', 'Éducation', 'Fidélisation'],
+    evidence: 'Calendrier', memory: 'Mémoire',
+  },
+  en: {
+    title: 'Editorial calendar', posts: 'posts', ideasToWrite: 'ideas to write',
+    today: 'Today', month: 'Month', list: 'List', newIdea: 'New idea', plan: 'Plan with AI',
+    allCampaigns: 'All campaigns', noCampaign: 'No campaign',
+    status: { idea: 'Idea', scheduled: 'Scheduled', published: 'Published' } as Record<Status, string>,
+    statusPlural: { idea: 'ideas', scheduled: 'scheduled', published: 'published' } as Record<Status, string>,
+    weekdays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], more: 'more',
+    analysis: 'Month analysis', analysing: 'Analysing the month…', analysisOk: 'Nothing to flag this month',
+    analysisOkText: 'Posts, networks and goals are well balanced.', proposePosts: 'Suggest posts',
+    mix: 'Posts per network', upcoming: 'Coming up', nothingUpcoming: 'Nothing planned after today.',
+    empty: 'No posts this month.', emptyHint: 'Plan the month with AI or add an idea.',
+    week: 'Week of', dayPosts: 'posts that day', addToDay: 'Add an idea that day',
+    planTitle: 'Plan with AI', planSub: 'based on your company memory', campaign: 'Campaign', goals: 'Goals',
+    networks: 'Networks', rhythm: 'Rhythm', perWeek: 'posts per week', theme: 'Theme of the month (optional)',
+    themePlaceholder: 'For example: changing careers', about: 'About', ideasFor: 'ideas for',
+    added: 'They are added to the calendar without removing your existing posts.', generate: 'Generate ideas', generating: 'Generating…',
+    campaignHint: "Ideas follow the campaign's brief, audience and zone",
+    clearMonth: 'Clear the month', confirmClear: 'Delete every post of this month? This cannot be undone.',
+    cancel: 'Cancel', save: 'Save', delete: 'Delete', confirmDelete: 'Delete this post from the calendar?',
+    topic: 'Topic', goal: 'Goal', date: 'Date', format: 'Format', network: 'Network', networksHint: 'One post per network, written for that network.',
+    adapt: 'Adapt for another network', adaptHint: 'Creates a copy of this idea for the chosen network; the text is written for that network.',
+    notWritten: 'Not written yet', notWrittenText: "The AI can write this post from the topic, the goal and the campaign's brief.",
+    write: 'Write with AI', newIdeaTitle: 'New idea', needNetwork: 'Choose at least one network.', needTopic: 'Enter a topic.',
+    goalOptions: ['Visibility', 'Leads', 'Engagement', 'Conversion', 'Education', 'Retention'],
+    evidence: 'Calendar', memory: 'Memory',
+  },
+}
+type Copy = typeof COPY.fr
+
+const STATUSES: Status[] = ['idea', 'scheduled', 'published']
+const STATUS_TONE: Record<Status, Tone> = { idea: 'neutral', scheduled: 'info', published: 'success' }
+const STATUS_DOT: Record<Status, string> = { idea: 'var(--ink-subtle)', scheduled: 'var(--info)', published: 'var(--success)' }
+
+const pad = (n: number) => String(n).padStart(2, '0')
+const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+const monthKey = (y: number, m: number) => `${y}-${pad(m + 1)}`
+const todayIso = () => iso(new Date())
+
+function useNarrow() {
+  const query = '(max-width: 767px)'
+  const [narrow, setNarrow] = useState(() => window.matchMedia(query).matches)
+  useEffect(() => {
+    const mq = window.matchMedia(query)
+    const on = () => setNarrow(mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+  return narrow
 }
 
-const FREQ_PRESETS = [1, 2, 3, 4, 5]
-
-const STATUS_CYCLE: Record<CalendarItem['status'], CalendarItem['status']> = {
-  idea: 'scheduled', scheduled: 'published', published: 'idea',
-}
-const STATUS_STYLE: Record<CalendarItem['status'], string> = {
-  idea:      'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400',
-  scheduled: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
-  published: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300',
-}
-const STATUS_LABEL = {
-  idea:      { fr: 'Idée', en: 'Idea' },
-  scheduled: { fr: 'Planifié', en: 'Scheduled' },
-  published: { fr: 'Publié', en: 'Published' },
-}
-const FORMAT_ICON: Record<string, React.ElementType> = {
-  Post: FileText, Carousel: Image, Video: Clapperboard, Story: Zap,
-}
-const FORMAT_STYLE: Record<string, string> = {
-  Post:     'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-900',
-  Carousel: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900',
-  Video:    'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-900',
-  Story:    'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-900',
+// The Monday-first weeks covering a month.
+function monthWeeks(year: number, month: number): Date[][] {
+  const first = new Date(year, month, 1)
+  const start = new Date(year, month, 1 - ((first.getDay() + 6) % 7))
+  const weeks: Date[][] = []
+  for (let cursor = new Date(start); weeks.length < 6; ) {
+    const week: Date[] = []
+    for (let d = 0; d < 7; d++) { week.push(new Date(cursor)); cursor.setDate(cursor.getDate() + 1) }
+    weeks.push(week)
+    if (cursor.getMonth() !== month) break
+  }
+  return weeks
 }
 
-// ─── Helpers ───────────────────────────────────────────────────
-function monthKey(y: number, m: number) { return `${y}-${String(m + 1).padStart(2, '0')}` }
-function isoDate(y: number, m: number, d: number) {
-  return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-}
-function getDaysInMonth(y: number, m: number) { return new Date(y, m + 1, 0).getDate() }
-function monthLabel(y: number, m: number, lang: 'fr' | 'en') {
-  return new Date(y, m, 1).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', { month: 'long', year: 'numeric' })
+function StatusDot({ status }: { status: Status }) {
+  return <span className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: STATUS_DOT[status] }} aria-hidden="true" />
 }
 
-// ─── Skeleton loader row ───────────────────────────────────────
-function SkeletonRow() {
+function FormatIcon({ format, className }: { format: ContentFormat; className?: string }) {
+  const Icon = FORMAT_MAP[format]?.icon ?? FORMAT_MAP.Post.icon
+  return <Icon className={cn('h-3 w-3 shrink-0', className)} aria-hidden="true" />
+}
+
+function DateBlock({ date, lang }: { date: string; lang: 'fr' | 'en' }) {
+  const d = new Date(`${date}T00:00:00`)
   return (
-    <tr className="border-b border-[var(--color-border)] animate-pulse">
-      <td className="px-4 py-4">
-        <div className="flex flex-col gap-1.5">
-          <div className="h-3 w-8 bg-[var(--color-border)] rounded-full" />
-          <div className="h-5 w-6 bg-[var(--color-border)] rounded-md" />
-        </div>
-      </td>
-      <td className="px-4 py-4">
-        <div className="flex flex-col gap-1.5">
-          <div className="h-3 rounded-full bg-[var(--color-border)]" style={{ width: `${60 + Math.random() * 30}%` }} />
-          <div className="h-3 rounded-full bg-[var(--color-border)] opacity-60" style={{ width: `${30 + Math.random() * 30}%` }} />
-        </div>
-      </td>
-      <td className="px-4 py-4">
-        <div className="h-3 rounded-full bg-[var(--color-border)]" style={{ width: `${50 + Math.random() * 25}%` }} />
-      </td>
-      <td className="px-4 py-4">
-        <div className="h-5 w-16 bg-[var(--color-border)] rounded-full" />
-      </td>
-      <td className="px-4 py-4">
-        <div className="h-7 w-20 bg-[var(--color-border)] rounded-lg" />
-      </td>
-    </tr>
+    <span className="fc-date">
+      <span className="fc-date__m">{d.toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', { month: 'short' })}</span>
+      <span className="fc-date__d">{d.getDate()}</span>
+    </span>
   )
 }
 
-// ─── Skeleton table ────────────────────────────────────────────
-function SkeletonTable({ count = 8, lang }: { count?: number; lang: 'fr' | 'en' }) {
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function CalendarPage() {
+  const { t, lang } = useI18n()
+  const L: 'fr' | 'en' = lang === 'fr' ? 'fr' : 'en'
+  const c = COPY[L]
+  const { activeCompany, products, segments, keyMessages } = useCompany()
+  const { apiKeyConfigured } = useAuth()
+  const navigate = useNavigate()
+  const narrow = useNarrow()
+  const { campaigns, zoneLabel } = useCampaignOptions(activeCompany?.id)
+
+  const now = new Date()
+  const [year, setYear] = useState(now.getFullYear())
+  const [month, setMonth] = useState(now.getMonth())
+  const [view, setView] = useState<'month' | 'list'>('month')
+  const [items, setItems] = useState<CalendarItem[]>([])
+  const [loadingItems, setLoadingItems] = useState(true)
+  const [error, setError] = useState('')
+  const [campaignFilter, setCampaignFilter] = useState<'all' | 'none' | string>('all')
+  const [channelFilter, setChannelFilter] = useState<string[]>([])
+  const [plannerOpen, setPlannerOpen] = useState(false)
+  const [draft, setDraft] = useState<Draft | null>(null)
+  const [openDay, setOpenDay] = useState<string | null>(null)
+
+  const canEdit = Boolean(activeCompany && ['owner', 'admin', 'editor'].includes(activeCompany.role ?? ''))
+
+  useEffect(() => {
+    let cancelled = false
+    if (!activeCompany) { setItems([]); setLoadingItems(false); return }
+    setLoadingItems(true)
+    listDataverseCalendarItems(activeCompany.id)
+      .then(data => { if (!cancelled) setItems(data as CalendarItem[]) })
+      .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : String(err)) })
+      .finally(() => { if (!cancelled) setLoadingItems(false) })
+    return () => { cancelled = true }
+  }, [activeCompany?.id])
+
+  const mk = monthKey(year, month)
+  const monthItems = useMemo(() => items.filter(i => i.date.startsWith(mk)), [items, mk])
+  const visibleItems = useMemo(() => monthItems.filter(i => {
+    if (campaignFilter === 'none' && i.campaign_id) return false
+    if (campaignFilter !== 'all' && campaignFilter !== 'none' && i.campaign_id !== campaignFilter) return false
+    if (channelFilter.length && !channelFilter.includes(networkOf(i.channel))) return false
+    return true
+  }).sort((a, b) => a.date.localeCompare(b.date)), [monthItems, campaignFilter, channelFilter])
+
+  const counts = useMemo(() => Object.fromEntries(STATUSES.map(s => [s, monthItems.filter(i => i.status === s).length])) as Record<Status, number>, [monthItems])
+  const monthChannels = useMemo(() => {
+    const tally: Record<string, number> = {}
+    for (const item of monthItems) { const ch = networkOf(item.channel); if (ch) tally[ch] = (tally[ch] ?? 0) + 1 }
+    return Object.entries(tally).sort((a, b) => b[1] - a[1])
+  }, [monthItems])
+  const monthName = new Date(year, month, 1).toLocaleDateString(L === 'fr' ? 'fr-FR' : 'en-GB', { month: 'long', year: 'numeric' })
+
+  const shiftMonth = (delta: number) => {
+    const d = new Date(year, month + delta, 1)
+    setYear(d.getFullYear())
+    setMonth(d.getMonth())
+  }
+  const goToday = () => { setYear(now.getFullYear()); setMonth(now.getMonth()) }
+
+  const openNew = (date?: string) => setDraft({
+    date: date ?? (mk === todayIso().slice(0, 7) ? todayIso() : `${mk}-01`),
+    topic: '', goal: '', format: 'Post', channel: parseChannels(activeCompany?.channels ?? '')[0] ?? 'linkedin', status: 'idea',
+    campaign_id: campaignFilter !== 'all' && campaignFilter !== 'none' ? campaignFilter : null,
+  })
+
+  const writeWithAi = (item: CalendarItem | Draft) => {
+    const first = networkOf(item.channel)
+    navigate(`/content?${new URLSearchParams({ topic: item.topic, channel: first, goal: item.goal, format: item.format, ...(item.campaign_id ? { campaign: item.campaign_id } : {}) }).toString()}`)
+  }
+
+  const saveDraft = async (next: Draft) => {
+    if (!activeCompany) return
+    const { id, campaign_id, ...fields } = next
+    if (id) {
+      await updateDataverseCalendarItem(id, fields)
+      const previous = items.find(i => i.id === id)
+      if ((previous?.campaign_id ?? null) !== (campaign_id ?? null)) await setContentCampaign('calendar', id, campaign_id ?? null)
+      setItems(prev => prev.map(i => i.id === id ? { ...i, ...fields, campaign_id } : i))
+    } else {
+      const created = await createDataverseCalendarItem(activeCompany.id, fields)
+      if (campaign_id) await setContentCampaign('calendar', created.id, campaign_id)
+      setItems(prev => [...prev, { ...(created as CalendarItem), campaign_id }])
+    }
+    window.dispatchEvent(new Event('flowcom:data-updated'))
+    setDraft(null)
+  }
+
+  const deleteItem = async (id: string) => {
+    await deleteDataverseCalendarItem(id)
+    setItems(prev => prev.filter(i => i.id !== id))
+    window.dispatchEvent(new Event('flowcom:data-updated'))
+    setDraft(null)
+  }
+
+  const clearMonth = async () => {
+    if (!window.confirm(c.confirmClear)) return
+    await Promise.all(monthItems.map(i => deleteDataverseCalendarItem(i.id)))
+    setItems(prev => prev.filter(i => !i.date.startsWith(mk)))
+    window.dispatchEvent(new Event('flowcom:data-updated'))
+  }
+
+  const onGenerated = (created: CalendarItem[]) => {
+    setItems(prev => [...prev, ...created])
+    window.dispatchEvent(new Event('flowcom:data-updated'))
+    setPlannerOpen(false)
+  }
+
+  const showMonth = view === 'month' && !narrow
+
   return (
-    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl overflow-hidden">
-      <table className="w-full">
-        <thead>
-          <tr className="border-b border-[var(--color-border)] bg-[var(--color-surface-alt)]">
-            {[
-              lang === 'fr' ? 'DATE' : 'DATE',
-              lang === 'fr' ? 'SUJET SUGGÉRÉ' : 'SUGGESTED TOPIC',
-              lang === 'fr' ? 'OBJECTIF SPÉCIFIQUE' : 'SPECIFIC GOAL',
-              'FORMAT',
-              'ACTION',
-            ].map(h => (
-              <th key={h} className="px-4 py-3 text-left text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider">
-                {h}
-              </th>
+    <div className="min-h-full bg-surface-page">
+      <div className="mx-auto flex max-w-[var(--content-max)] flex-col gap-4 px-4 py-5 sm:px-6">
+        {/* Header */}
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="m-0 text-[22px] font-bold leading-7 text-ink sm:text-[24px] sm:leading-[30px]" style={{ fontFamily: 'var(--font-display)' }}>{c.title}</h1>
+            <p className="m-0 mt-0.5 text-sm text-ink-muted">{monthItems.length} {c.posts} · {counts.idea} {c.ideasToWrite}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-0.5 rounded-[var(--radius-md)] border border-line-strong bg-surface-card p-0.5">
+              <Button variant="ghost" size="sm" iconOnly icon={<ChevronLeft />} onClick={() => shiftMonth(-1)} aria-label={L === 'fr' ? 'Mois précédent' : 'Previous month'} />
+              <span className="min-w-[128px] text-center text-sm font-bold capitalize text-ink" style={{ fontFamily: 'var(--font-display)' }}>{monthName}</span>
+              <Button variant="ghost" size="sm" iconOnly icon={<ChevronRight />} onClick={() => shiftMonth(1)} aria-label={L === 'fr' ? 'Mois suivant' : 'Next month'} />
+            </div>
+            <Button variant="ghost" size="sm" onClick={goToday}>{c.today}</Button>
+            {!narrow && (
+              <div role="tablist" aria-label={L === 'fr' ? 'Affichage' : 'View'} className="flex rounded-[var(--radius-md)] border border-line-strong bg-surface-card p-0.5">
+                {(['month', 'list'] as const).map(v => (
+                  <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)}
+                    className={cn('fc-btn fc-btn--sm', view === v ? 'bg-brand-soft text-brand-ink' : 'fc-btn--ghost')}>
+                    {v === 'month' ? c.month : c.list}
+                  </button>
+                ))}
+              </div>
+            )}
+            <Button variant="secondary" icon={<Plus />} onClick={() => openNew()} disabled={!canEdit}>{c.newIdea}</Button>
+            <Button variant="ai" onClick={() => setPlannerOpen(true)} disabled={!canEdit || !apiKeyConfigured}>{c.plan}</Button>
+          </div>
+        </div>
+
+        {/* Filters and counts */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Chip pressed={campaignFilter === 'all'} onClick={() => setCampaignFilter('all')}>{c.allCampaigns}</Chip>
+            {campaigns.map(cp => <Chip key={cp.id} pressed={campaignFilter === cp.id} onClick={() => setCampaignFilter(cp.id)}>{cp.name}</Chip>)}
+            <Chip pressed={campaignFilter === 'none'} onClick={() => setCampaignFilter('none')}>{c.noCampaign}</Chip>
+            {monthChannels.length > 1 && <span className="mx-1 hidden h-5 w-px bg-line sm:block" aria-hidden="true" />}
+            {monthChannels.length > 1 && monthChannels.map(([ch]) => {
+              const def = CHANNEL_MAP[ch]
+              if (!def) return null
+              const on = channelFilter.includes(ch)
+              return (
+                <Chip key={ch} pressed={on} icon={<def.icon className="h-3.5 w-3.5" style={{ color: def.color }} />}
+                  onClick={() => setChannelFilter(f => on ? f.filter(x => x !== ch) : [...f, ch])}>{def.label}</Chip>
+              )
+            })}
+          </div>
+          <div className="flex items-center gap-1.5">
+            {STATUSES.map(s => (
+              <Badge key={s} tone={STATUS_TONE[s]} icon={<StatusDot status={s} />}>{counts[s]} {c.statusPlural[s]}</Badge>
             ))}
-          </tr>
-        </thead>
-        <tbody>
-          {Array.from({ length: count }).map((_, i) => <SkeletonRow key={i} />)}
-        </tbody>
-      </table>
+          </div>
+        </div>
+
+        {error && <p className="rounded-[var(--radius-md)] bg-danger-soft px-3 py-2 text-[13px] text-danger">{error}</p>}
+
+        <div className={cn('grid gap-4', !narrow && 'lg:grid-cols-[minmax(0,1fr)_320px]')}>
+          <div className="min-w-0">
+            {loadingItems ? (
+              <Card className="grid h-[480px] place-items-center"><Loader2 className="h-5 w-5 animate-spin text-ink-muted" /></Card>
+            ) : showMonth ? (
+              <MonthGrid year={year} month={month} items={visibleItems} c={c} canEdit={canEdit}
+                onOpen={item => setDraft({ ...item })} onNew={openNew} onDay={setOpenDay} />
+            ) : (
+              <ListView items={visibleItems} c={c} lang={L} onOpen={item => setDraft({ ...item })} onNew={() => openNew()} canEdit={canEdit} />
+            )}
+          </div>
+
+          <div className="flex min-w-0 flex-col gap-4">
+            <MonthAnalysis monthItems={monthItems} mk={mk} c={c} lang={L} onPropose={() => setPlannerOpen(true)} canPlan={canEdit && apiKeyConfigured} />
+            {monthChannels.length > 0 && (
+              <Card>
+                <CardHeader title={c.mix} />
+                <CardBody className="flex flex-col gap-2.5">
+                  {monthChannels.map(([ch, count], i) => {
+                    const def = CHANNEL_MAP[ch]
+                    const max = monthChannels[0][1]
+                    return (
+                      <div key={ch} className="grid grid-cols-[92px_minmax(0,1fr)_24px] items-center gap-2 text-[13px] text-ink">
+                        <span className="flex items-center gap-1.5 truncate">{def && <def.icon className="h-3.5 w-3.5 shrink-0" style={{ color: def.color }} />}{def?.label ?? ch}</span>
+                        <span className="h-2 overflow-hidden rounded-full bg-surface-sunken">
+                          <span className="block h-full rounded-full" style={{ width: `${Math.round((count / max) * 100)}%`, background: `var(--chart-${(i % 6) + 1})` }} />
+                        </span>
+                        <span className="text-right font-bold" style={{ fontFamily: 'var(--font-display)' }}>{count}</span>
+                      </div>
+                    )
+                  })}
+                </CardBody>
+              </Card>
+            )}
+            <Upcoming items={items} c={c} lang={L} onOpen={item => setDraft({ ...item })} onList={() => setView('list')} />
+          </div>
+        </div>
+      </div>
+
+      <Planner open={plannerOpen} onClose={() => setPlannerOpen(false)} c={c} lang={L} year={year} month={month} monthName={monthName}
+        campaigns={campaigns} zoneLabel={zoneLabel} onGenerated={onGenerated} onClear={clearMonth} hasMonthItems={monthItems.length > 0}
+        context={() => buildAiContext({ company: activeCompany, products, segments, keyMessages })}
+        segments={segments} keyMessages={keyMessages} companyId={activeCompany?.id ?? ''} companyChannels={activeCompany?.channels ?? ''} t={t} />
+
+      <DaySheet day={openDay} items={visibleItems.filter(i => i.date === openDay)} c={c} lang={L} canEdit={canEdit}
+        onClose={() => setOpenDay(null)}
+        onOpen={item => { setOpenDay(null); setDraft({ ...item }) }}
+        onNew={date => { setOpenDay(null); openNew(date) }} />
+
+      <DetailSheet draft={draft} onClose={() => setDraft(null)} c={c} lang={L} campaigns={campaigns} canEdit={canEdit}
+        onSave={saveDraft} onDelete={deleteItem} onWrite={writeWithAi} onAdapt={setDraft} />
     </div>
   )
 }
 
-// ─── Page ──────────────────────────────────────────────────────
-export default function CalendarPage() {
-  const { t, lang } = useI18n()
-  const { activeCompany, products, segments, keyMessages } = useCompany()
+// ─── Month grid ───────────────────────────────────────────────────────────────
+
+function MonthGrid({ year, month, items, c, canEdit, onOpen, onNew, onDay }: {
+  year: number; month: number; items: CalendarItem[]; c: Copy; canEdit: boolean
+  onOpen: (item: CalendarItem) => void; onNew: (date: string) => void; onDay: (date: string) => void
+}) {
+  const weeks = monthWeeks(year, month)
+  const today = todayIso()
+  const byDay = useMemo(() => {
+    const map: Record<string, CalendarItem[]> = {}
+    for (const item of items) (map[item.date] ??= []).push(item)
+    return map
+  }, [items])
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="grid grid-cols-7 border-b border-line bg-surface-sunken">
+        {c.weekdays.map(wd => <div key={wd} className="px-2.5 py-2 text-[12px] font-semibold text-ink-muted">{wd}</div>)}
+      </div>
+      <div>
+        {weeks.map((week, w) => (
+          <div key={w} className="grid grid-cols-7 border-b border-line last:border-b-0">
+            {week.map(day => {
+              const key = iso(day)
+              const inMonth = day.getMonth() === month
+              const dayItems = byDay[key] ?? []
+              const weekend = day.getDay() === 0 || day.getDay() === 6
+              return (
+                <div key={key}
+                  className={cn('group relative flex min-h-[112px] min-w-0 flex-col gap-1 border-r border-line p-1.5 last:border-r-0',
+                    !inMonth && 'bg-surface-page', inMonth && weekend && 'bg-[color-mix(in_srgb,var(--surface-page)_50%,var(--surface-card))]')}>
+                  <div className="flex items-center justify-between">
+                    <span className={cn('grid h-6 min-w-6 place-items-center text-[12px] font-semibold',
+                      key === today ? 'rounded-full bg-brand px-1 font-bold text-on-brand' : inMonth ? 'text-ink' : 'text-ink-subtle')}
+                      style={{ fontFamily: 'var(--font-display)' }}>{day.getDate()}</span>
+                    {inMonth && canEdit && (
+                      <button onClick={() => onNew(key)} aria-label={`${c.newIdea} ${key}`}
+                        className="grid h-6 w-6 place-items-center rounded-[var(--radius-sm)] text-ink-muted opacity-0 transition-opacity hover:bg-surface-sunken focus-visible:opacity-100 group-hover:opacity-100">
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {dayItems.slice(0, 2).map(item => <PostChip key={item.id} item={item} c={c} onOpen={() => onOpen(item)} />)}
+                  {dayItems.length > 2 && (
+                    <button onClick={() => onDay(key)} className="px-1 text-left text-[11px] font-semibold text-brand hover:underline">
+                      +{dayItems.length - 2} {c.more}
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        ))}
+      </div>
+    </Card>
+  )
+}
+
+function PostChip({ item, c, onOpen }: { item: CalendarItem; c: Copy; onOpen: () => void }) {
+  const channels = [networkOf(item.channel)]
+  const labels = CHANNEL_MAP[channels[0]]?.label ?? channels[0]
+  const formatLabel = FORMAT_MAP[item.format]?.label[c === COPY.fr ? 'fr' : 'en'] ?? item.format
+  return (
+    <button onClick={onOpen} title={`${item.topic} · ${formatLabel} · ${labels} · ${c.status[item.status]}`}
+      className={cn('flex w-full min-w-0 flex-col gap-0.5 rounded-[var(--radius-sm)] border border-line bg-surface-card px-1.5 py-1 text-left text-[11px] leading-[14px] text-ink hover:border-line-strong',
+        item.status === 'idea' && 'border-dashed')}>
+      <span className="flex items-center gap-1 text-ink-muted">
+        <StatusDot status={item.status} />
+        <FormatIcon format={item.format} />
+        <span className="flex-1" />
+        <ChannelIcons channels={channels} />
+      </span>
+      <span className="truncate">{item.topic || '—'}</span>
+    </button>
+  )
+}
+
+// Every post of one day, opened from "+n more" in the month grid.
+function DaySheet({ day, items, c, lang, canEdit, onClose, onOpen, onNew }: {
+  day: string | null; items: CalendarItem[]; c: Copy; lang: 'fr' | 'en'; canEdit: boolean
+  onClose: () => void; onOpen: (item: CalendarItem) => void; onNew: (date: string) => void
+}) {
+  if (!day) return null
+  const title = new Date(`${day}T00:00:00`).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+  return (
+    <Sheet open onClose={onClose} closeLabel={c.cancel} title={<span className="capitalize">{title}</span>} subtitle={`${items.length} ${c.dayPosts}`}
+      icon={<span className="pt-0.5"><DateBlock date={day} lang={lang} /></span>}
+      footer={canEdit ? <><span className="flex-1" /><Button variant="secondary" icon={<Plus />} onClick={() => onNew(day)}>{c.addToDay}</Button></> : undefined}>
+      <div className="flex flex-col gap-1.5">
+        {items.map(item => (
+          <button key={item.id} onClick={() => onOpen(item)}
+            className="flex min-h-14 w-full items-center gap-3 rounded-[var(--radius-lg)] border border-line bg-surface-card px-3 py-2 text-left text-ink hover:border-line-strong">
+            <ChannelIcons channels={[networkOf(item.channel)]} className="[&_svg]:h-4 [&_svg]:w-4" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold">{item.topic || '—'}</span>
+              <span className="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-muted">
+                <FormatIcon format={item.format} className="h-3.5 w-3.5" />{FORMAT_MAP[item.format]?.label[lang] ?? item.format}
+                <span className="mx-0.5 h-2.5 w-px bg-line-strong" aria-hidden="true" />
+                {CHANNEL_MAP[networkOf(item.channel)]?.label ?? networkOf(item.channel)}
+              </span>
+            </span>
+            <Badge tone={STATUS_TONE[item.status]}>{c.status[item.status]}</Badge>
+          </button>
+        ))}
+      </div>
+    </Sheet>
+  )
+}
+
+// ─── List view ────────────────────────────────────────────────────────────────
+
+function ListView({ items, c, lang, canEdit, onOpen, onNew }: {
+  items: CalendarItem[]; c: Copy; lang: 'fr' | 'en'; canEdit: boolean; onOpen: (item: CalendarItem) => void; onNew: () => void
+}) {
+  const groups = useMemo(() => {
+    const map = new Map<string, CalendarItem[]>()
+    for (const item of items) {
+      const d = new Date(`${item.date}T00:00:00`)
+      const monday = new Date(d)
+      monday.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+      const key = iso(monday)
+      map.set(key, [...(map.get(key) ?? []), item])
+    }
+    return [...map.entries()]
+  }, [items])
+
+  if (!items.length) {
+    return (
+      <Card className="flex flex-col items-center gap-2 px-6 py-12 text-center">
+        <p className="m-0 text-[15px] font-bold text-ink" style={{ fontFamily: 'var(--font-display)' }}>{c.empty}</p>
+        <p className="m-0 text-sm text-ink-muted">{c.emptyHint}</p>
+        {canEdit && <Button variant="secondary" size="sm" icon={<Plus />} onClick={onNew} className="mt-2">{c.newIdea}</Button>}
+      </Card>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {groups.map(([monday, list]) => (
+        <section key={monday} className="flex flex-col gap-1.5">
+          <p className="m-0 text-[11px] font-bold uppercase tracking-[0.06em] text-ink-muted">
+            {c.week} {new Date(`${monday}T00:00:00`).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'long' })}
+          </p>
+          {list.map(item => {
+            const channels = [networkOf(item.channel)]
+            return (
+              <button key={item.id} onClick={() => onOpen(item)}
+                className="flex min-h-14 w-full items-center gap-3 rounded-[var(--radius-lg)] border border-line bg-surface-card px-3 py-2 text-left text-ink hover:border-line-strong">
+                <DateBlock date={item.date} lang={lang} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold">{item.topic || '—'}</span>
+                  <span className="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-muted">
+                    <FormatIcon format={item.format} className="h-3.5 w-3.5" />{FORMAT_MAP[item.format]?.label[lang] ?? item.format}
+                    <span className="mx-0.5 h-2.5 w-px bg-line-strong" aria-hidden="true" />
+                    <ChannelIcons channels={channels} max={5} />
+                  </span>
+                </span>
+                <Badge tone={STATUS_TONE[item.status]}>{c.status[item.status]}</Badge>
+              </button>
+            )
+          })}
+        </section>
+      ))}
+    </div>
+  )
+}
+
+// ─── Side column ──────────────────────────────────────────────────────────────
+
+function Upcoming({ items, c, lang, onOpen, onList }: { items: CalendarItem[]; c: Copy; lang: 'fr' | 'en'; onOpen: (item: CalendarItem) => void; onList: () => void }) {
+  const today = todayIso()
+  const next = items.filter(i => i.date >= today && i.status !== 'published').sort((a, b) => a.date.localeCompare(b.date)).slice(0, 4)
+  return (
+    <Card>
+      <CardHeader title={c.upcoming} actions={<Button variant="ghost" size="sm" onClick={onList}>{c.list}</Button>} />
+      <CardBody className="flex flex-col gap-1.5">
+        {next.length === 0 && <p className="m-0 text-[13px] text-ink-muted">{c.nothingUpcoming}</p>}
+        {next.map(item => (
+          <button key={item.id} onClick={() => onOpen(item)}
+            className="flex items-center gap-2.5 rounded-[var(--radius-md)] bg-surface-sunken px-2.5 py-2 text-left hover:bg-[color-mix(in_srgb,var(--surface-sunken)_70%,var(--line))]">
+            <DateBlock date={item.date} lang={lang} />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-semibold text-ink">{item.topic || '—'}</span>
+              <span className="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-muted">
+                <FormatIcon format={item.format} />{FORMAT_MAP[item.format]?.label[lang]}
+                <span className="h-2.5 w-px bg-line-strong" aria-hidden="true" />
+                <ChannelIcons channels={[networkOf(item.channel)]} />
+              </span>
+            </span>
+            <Badge tone={STATUS_TONE[item.status]}>{c.status[item.status]}</Badge>
+          </button>
+        ))}
+      </CardBody>
+    </Card>
+  )
+}
+
+// The AI's review of the month: gaps, network balance, missing goals.
+function MonthAnalysis({ monthItems, mk, c, lang, onPropose, canPlan }: {
+  monthItems: CalendarItem[]; mk: string; c: Copy; lang: 'fr' | 'en'; onPropose: () => void; canPlan: boolean
+}) {
+  const { activeCompany } = useCompany()
   const { apiKeyConfigured } = useAuth()
-  const navigate = useNavigate()
+  const [warnings, setWarnings] = useState<{ fr: string[]; en: string[] } | null>(null)
+  const [loading, setLoading] = useState(false)
+  const lastKey = useRef('')
 
-  const now = new Date()
-  const [year, setYear]   = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth())
+  useEffect(() => {
+    if (!apiKeyConfigured || !activeCompany || monthItems.length < 3) { setWarnings(null); return }
+    const tally = (pick: (i: CalendarItem) => string[]) => monthItems.reduce<Record<string, number>>((acc, i) => {
+      for (const k of pick(i)) acc[k] = (acc[k] ?? 0) + 1
+      return acc
+    }, {})
+    const channels = tally(i => [networkOf(i.channel)])
+    const key = `${mk}-${monthItems.length}-${Object.keys(channels).sort().join(',')}`
+    if (lastKey.current === key) return
+    lastKey.current = key
+    let alive = true
+    const dates = [...new Set(monthItems.map(i => i.date))].sort()
+    const gaps: string[] = []
+    for (let d = 1; d < dates.length; d++) {
+      const diff = (Date.parse(dates[d]) - Date.parse(dates[d - 1])) / 86400000
+      if (diff > 5) gaps.push(`${diff} days between ${dates[d - 1]} and ${dates[d]}`)
+    }
+    const summary = [
+      `Month: ${mk}, posts planned: ${monthItems.length}`,
+      `Posts per network: ${Object.entries(channels).map(([k, v]) => `${k}(${v})`).join(', ')}`,
+      `Goals: ${Object.entries(tally(i => [i.goal])).map(([k, v]) => `${k}(${v})`).join(', ')}`,
+      gaps.length ? `Date gaps > 5 days: ${gaps.join('; ')}` : 'No large date gaps',
+      `Brand preferred channels: ${activeCompany.channels || 'not set'}`,
+      `Brand publishing frequency: ${activeCompany.frequency || 'not set'}`,
+    ].join('\n')
+    setLoading(true)
+    callModelJSON<{ warnings_fr: string[]; warnings_en: string[] }>(activeCompany.id, [
+      { role: 'system', content: 'You are an editorial calendar auditor. Return JSON {"warnings_fr":["string"],"warnings_en":["string"]} with 0 to 3 short warnings (max 18 words each; French in warnings_fr, English in warnings_en). Only flag real issues: publishing gaps over 5 days, network imbalance versus the brand\'s preferred channels, goals over- or under-represented. Cite the numbers. A good plan returns empty arrays. Do not invent problems.' },
+      { role: 'user', content: summary },
+    ], { temperature: 0.2, max_tokens: 400, requiredKeys: ['warnings_fr', 'warnings_en'] })
+      .then(result => {
+        if (!alive) return
+        const clean = (list: unknown) => (Array.isArray(list) ? list.filter((w): w is string => typeof w === 'string').slice(0, 3) : [])
+        setWarnings({ fr: clean(result.warnings_fr), en: clean(result.warnings_en) })
+      })
+      .catch(() => { if (alive) setWarnings(null) })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [monthItems, mk, apiKeyConfigured, activeCompany])
 
-  const [goals, setGoals]       = useState<string[]>([GOALS[lang][0]])
-  const [theme, setTheme]       = useState('')
-  const [channels, setChannels] = useState<string[]>(['linkedin'])
-  const [freq, setFreq]         = useState(2)
-  const [customFreq, setCustomFreq] = useState('')
-  const [isCustomFreq, setIsCustomFreq] = useState(false)
+  if (!apiKeyConfigured || monthItems.length < 3) return null
+  if (loading) {
+    return (
+      <InsightCard kind={c.analysis} title={c.analysing}>
+        <span className="inline-flex items-center gap-2"><Loader2 className="h-3.5 w-3.5 animate-spin" /></span>
+      </InsightCard>
+    )
+  }
+  if (!warnings) return null
+  const list = warnings[lang]
+  return (
+    <InsightCard kind={c.analysis} title={list.length ? list[0] : c.analysisOk}
+      evidence={[`${c.evidence} (${monthItems.length})`, c.memory]}
+      action={list.length && canPlan ? <Button variant="secondary" size="sm" onClick={onPropose}>{c.proposePosts}</Button> : undefined}>
+      {list.length > 1
+        ? <ul className="m-0 list-disc space-y-1 pl-4">{list.slice(1).map(w => <li key={w}>{w}</li>)}</ul>
+        : list.length === 0 ? c.analysisOkText : null}
+    </InsightCard>
+  )
+}
 
-  // Optional campaign: generation follows it and the ideas are linked to it.
-  const { campaigns, zoneLabel } = useCampaignOptions(activeCompany?.id)
+// ─── Planner (AI) ─────────────────────────────────────────────────────────────
+
+function Planner({ open, onClose, c, lang, year, month, monthName, campaigns, zoneLabel, onGenerated, onClear, hasMonthItems, context, segments, keyMessages, companyId, companyChannels, t }: {
+  open: boolean; onClose: () => void; c: Copy; lang: 'fr' | 'en'; year: number; month: number; monthName: string
+  campaigns: ReturnType<typeof useCampaignOptions>['campaigns']; zoneLabel: ReturnType<typeof useCampaignOptions>['zoneLabel']
+  onGenerated: (items: CalendarItem[]) => void; onClear: () => void; hasMonthItems: boolean
+  context: () => string; segments: Parameters<typeof buildCampaignContext>[1]['segments']; keyMessages: Parameters<typeof buildCampaignContext>[1]['keyMessages']
+  companyId: string; companyChannels: string; t: ReturnType<typeof useI18n>['t']
+}) {
   const [campaignId, setCampaignId] = useState('')
-  const campaign = campaigns.find(c => c.id === campaignId)
+  const [goals, setGoals] = useState<string[]>([c.goalOptions[0]])
+  const [channels, setChannels] = useState<string[]>(() => {
+    const preferred = parseChannels(companyChannels).filter(ch => CHANNEL_MAP[ch])
+    return preferred.length ? preferred : ['linkedin']
+  })
+  const [perWeek, setPerWeek] = useState(3)
+  const [theme, setTheme] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const campaign = campaigns.find(cp => cp.id === campaignId)
+
   const chooseCampaign = (id: string) => {
     setCampaignId(id)
-    const next = campaigns.find(c => c.id === id)
+    const next = campaigns.find(cp => cp.id === id)
     const mapped = next?.channels.map(ch => CONTENT_CHANNEL[ch]).filter((v): v is string => Boolean(v)) ?? []
     if (mapped.length) setChannels(mapped)
   }
 
-  const [view, setView]       = useState<'list' | 'grid'>('list')
-  const [items, setItems]     = useState<CalendarItem[]>(() => {
-    return []
-  })
-  const [loading, setLoading] = useState(false)
-  const [loadingItems, setLoadingItems] = useState(true)
-  const [error, setError]     = useState('')
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  const from = campaign?.start_date && campaign.start_date > `${monthKey(year, month)}-01` ? Number(campaign.start_date.slice(8, 10)) : 1
+  const to = campaign?.end_date && campaign.end_date < `${monthKey(year, month)}-${pad(lastDay)}` ? Number(campaign.end_date.slice(8, 10)) : lastDay
+  const total = Math.max(1, Math.round(perWeek * ((to - from + 1) / 7)))
+  const networkNames = channels.map(ch => CHANNEL_MAP[ch]?.label ?? ch).join(', ')
 
-  // ── AI gap analysis state ──────────────────────────────────────────────────
-  const [gapWarnings, setGapWarnings]       = useState<{ fr: string[]; en: string[] } | null>(null)
-  const [gapLoading, setGapLoading]         = useState(false)
-  const [gapDismissed, setGapDismissed]     = useState(false)
-  const gapAnalysedKeyRef                   = useRef<string>('')
-
-  useEffect(() => {
-    let cancelled = false
-    const loadItems = async () => {
-      if (!activeCompany) { setItems([]); setLoadingItems(false); return }
-      setLoadingItems(true)
-      const data = await listDataverseCalendarItems(activeCompany.id)
-      if (!cancelled) {
-        setItems(data)
-        setLoadingItems(false)
-      }
-    }
-    loadItems()
-    return () => { cancelled = true }
-  }, [activeCompany?.id])
-
-  const mk           = monthKey(year, month)
-  const monthItems   = useMemo(() => items.filter(i => i.date.startsWith(mk)), [items, mk])
-  const daysInMonth  = getDaysInMonth(year, month)
-  const effectiveFreq = isCustomFreq ? (parseInt(customFreq) || 1) : freq
-  const totalPosts   = Math.round(effectiveFreq * 4.33)
-
-  const stats = useMemo(() => ({
-    idea:      monthItems.filter(i => i.status === 'idea').length,
-    scheduled: monthItems.filter(i => i.status === 'scheduled').length,
-    published: monthItems.filter(i => i.status === 'published').length,
-  }), [monthItems])
-
-  const prevMonth = () => { if (month === 0) { setYear(y => y - 1); setMonth(11) } else setMonth(m => m - 1) }
-  const nextMonth = () => { if (month === 11) { setYear(y => y + 1); setMonth(0) } else setMonth(m => m + 1) }
-
-  const buildContext = () => {
-    return buildAiContext({ company: activeCompany, products, segments, keyMessages })
-  }
-
-  const handleGenerate = async () => {
-    if (!activeCompany)    { setError(lang === 'fr' ? 'Aucune entreprise active.' : 'No active company.'); return }
-    setLoading(true); setError('')
-
-    const mLabel       = monthLabel(year, month, lang)
-    const channelLabels = channels.map(c => CHANNEL_MAP[c]?.label ?? c).join(', ')
-    const goalLabels   = goals.join(', ')
-    const channelEnum  = channels.join('|')
-
-    const systemMsg = `You are an expert social media strategist. Create a monthly editorial calendar.
-Return ONLY valid JSON matching this exact schema:
-{"items":[{"date":"YYYY-MM-DD","topic":"string","goal":"string","format":"Post|Carousel|Video|Story","channel":"${channelEnum}"}]}
-Brand context:\n${buildContext()}${campaign ? `\n\nEvery idea belongs to the campaign below: serve its objective, target its audience, carry its key message, follow its brief and adapt to its target zone.\n${buildCampaignContext(campaign, { segments, keyMessages, zoneLabel: zoneLabel(campaign) })}` : ''}`
-
-    const userMsg = `Create ${totalPosts} post ideas distributed across these channels: ${channelLabels} in ${mLabel}.
-Goals to target: ${goalLabels}.
-${theme.trim() ? `CRITICAL: The overarching theme for this month is "${theme.trim()}". All topics MUST strongly align with this theme.` : ''}
-Spread evenly across the month, vary the formats.
-The date must be within month ${month + 1} of year ${year}.${campaign && (campaign.start_date || campaign.end_date) ? ` Dates must also fall between ${campaign.start_date || 'the start of the month'} and ${campaign.end_date || 'the end of the month'} (the campaign period).` : ''}
-Respond ONLY in ${lang === 'fr' ? 'French' : 'English'}.`
-
+  const generate = async () => {
+    if (!companyId || !channels.length) { setError(c.needNetwork); return }
+    setBusy(true)
+    setError('')
+    const mk = monthKey(year, month)
+    const system = `You are an expert social media strategist. Create editorial calendar ideas.
+Return ONLY valid JSON: {"items":[{"date":"YYYY-MM-DD","topic":"string","goal":"string","format":"Post|Carousel|Video|Story","channel":"one of ${channels.join('|')}"}]}
+Each item targets exactly ONE network, and its format must suit that network (TikTok and YouTube: Video; Instagram: Carousel, Story or Video; LinkedIn: Post or Carousel; WhatsApp: Story or Post). When a topic deserves several networks, create one item per network, each with the right format, optionally on different days. Use only these network ids.
+Brand context:\n${context()}${campaign ? `\n\nEvery idea belongs to the campaign below: serve its objective, target its audience, carry its key message, follow its brief and adapt to its target zone.\n${buildCampaignContext(campaign, { segments, keyMessages, zoneLabel: zoneLabel(campaign) })}` : ''}`
+    const user = `Create ${total} post ideas for ${monthName}, between day ${from} and day ${to} of month ${month + 1} of ${year}.
+Networks available: ${networkNames}. Goals: ${goals.join(', ')}.
+${theme.trim() ? `The theme of the month is "${theme.trim()}"; every topic must align with it.` : ''}
+Spread the ideas evenly and vary the formats. Respond in ${lang === 'fr' ? 'French' : 'English'}.`
     try {
-      type APIResponse = { items: Array<{ date: string; topic: string; goal: string; format: string; channel: string }> }
-      const res = await callModelJSON<APIResponse>(activeCompany?.id ?? '', [
-        { role: 'system', content: systemMsg },
-        { role: 'user',   content: userMsg },
-      ], { temperature: 0.8, max_tokens: 3000, requiredKeys: ['items'] })
-
-      const newItems: CalendarItem[] = (res.items ?? []).map((item, i) => ({
-        id: `${mk}-${i}-${Date.now()}`,
-        date: item.date,
-        topic: item.topic,
-        goal: item.goal,
-        format: (['Post', 'Carousel', 'Video', 'Story'].includes(item.format)
-          ? item.format : 'Post') as CalendarItem['format'],
-        channel: channels.includes(item.channel?.toLowerCase()) ? item.channel.toLowerCase() : channels[0],
-        status: 'idea',
-      }))
-      const payload = newItems.map(item => ({
-        date: item.date,
-        topic: item.topic,
-        goal: item.goal,
-        format: item.format,
-        channel: item.channel,
-        status: item.status,
-      }))
-      if (campaign) {
-        // Campaign ideas are added to the month (only within the campaign's dates)
-        // and linked to it; the month's other posts are left untouched.
-        const inPeriod = payload.filter(item =>
-          (!campaign.start_date || item.date >= campaign.start_date) && (!campaign.end_date || item.date <= campaign.end_date))
-        const created = await Promise.all(inPeriod.map(item => createDataverseCalendarItem(activeCompany.id, item)))
-        await Promise.all(created.map(item => setContentCampaign('calendar', item.id, campaign.id)))
-        setItems(prev => [...prev, ...created.map(item => ({ ...item, campaign_id: campaign.id }))])
-      } else {
-        const savedItems = await replaceDataverseCalendarMonth(activeCompany.id, mk, payload)
-        setItems(prev => [...prev.filter(i => !i.date.startsWith(mk)), ...savedItems])
-      }
-    } catch (e) {
-      setError(t(buildModelError(e) as Parameters<typeof t>[0]))
+      type Result = { items: Array<{ date: string; topic: string; goal: string; format: string; channels?: string[]; channel?: string }> }
+      const res = await callModelJSON<Result>(companyId, [{ role: 'system', content: system }, { role: 'user', content: user }], { temperature: 0.8, max_tokens: 3500, requiredKeys: ['items'] })
+      // One calendar item per network; an item naming several networks is split.
+      const payload = (res.items ?? [])
+        .filter(item => typeof item.date === 'string' && item.date.startsWith(mk) && Number(item.date.slice(8, 10)) >= from && Number(item.date.slice(8, 10)) <= to)
+        .flatMap(item => {
+          const named = Array.isArray(item.channels) ? item.channels.map(ch => String(ch).toLowerCase()) : parseChannels(item.channel)
+          const picked = named.filter(ch => channels.includes(ch))
+          const format = (['Post', 'Carousel', 'Video', 'Story'].includes(item.format) ? item.format : 'Post') as ContentFormat
+          return (picked.length ? picked : [channels[0]]).map(channel => ({
+            date: item.date.slice(0, 10),
+            topic: String(item.topic ?? '').slice(0, 500),
+            goal: String(item.goal ?? '').slice(0, 500),
+            format: suggestedFormat(channel, format),
+            channel,
+            status: 'idea' as const,
+          }))
+        })
+      const created = await Promise.all(payload.map(item => createDataverseCalendarItem(companyId, item)))
+      if (campaign) await Promise.all(created.map(item => setContentCampaign('calendar', item.id, campaign.id)))
+      onGenerated(created.map(item => ({ ...(item as CalendarItem), campaign_id: campaign?.id ?? null })))
+    } catch (err) {
+      const key = buildModelError(err)
+      setError(key !== 'error.generic' ? t(key as Parameters<typeof t>[0]) : err instanceof Error ? err.message : String(err))
     } finally {
-      setLoading(false)
+      setBusy(false)
     }
   }
-
-  const clearMonth  = async () => {
-    if (!activeCompany) return
-    await replaceDataverseCalendarMonth(activeCompany.id, mk, [])
-    setItems(prev => prev.filter(i => !i.date.startsWith(mk)))
-  }
-  const cycleStatus = async (id: string) => {
-    const item = items.find(i => i.id === id)
-    if (!item) return
-    const status = STATUS_CYCLE[item.status]
-    await updateDataverseCalendarItem(id, { status })
-    setItems(prev => prev.map(i => i.id === id ? { ...i, status } : i))
-  }
-  const removeItem  = async (id: string) => {
-    await deleteDataverseCalendarItem(id)
-    setItems(prev => prev.filter(i => i.id !== id))
-  }
-  const updateItem  = async (id: string, field: keyof CalendarItem, value: string) => {
-    await updateDataverseCalendarItem(id, field === 'date' ? { date: value } : { [field]: value } as Parameters<typeof updateDataverseCalendarItem>[1])
-    setItems(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i))
-  }
-  const goGenerate  = (item: CalendarItem) => {
-    navigate(`/content?${new URLSearchParams({ topic: item.topic, channel: item.channel, goal: item.goal, format: item.format, ...(item.campaign_id ? { campaign: item.campaign_id } : {}) }).toString()}`)
-  }
-
-  // ── AI gap analysis - fires when monthItems changes and has ≥3 items ───────
-  useEffect(() => {
-    if (!apiKeyConfigured) return
-    if (monthItems.length < 3) { setGapWarnings(null); return }
-
-    // Use month+item-count+channel-set as a key so we only re-run when the plan changes
-    const key = `${mk}-${monthItems.length}-${[...new Set(monthItems.map(i => i.channel))].sort().join(',')}`
-    if (gapAnalysedKeyRef.current === key) return
-    gapAnalysedKeyRef.current = key
-    setGapDismissed(false)
-
-    const run = async () => {
-      setGapLoading(true)
-      setGapWarnings(null)
-      try {
-        // Summarise the plan as text
-        const channelCounts = monthItems.reduce<Record<string, number>>((acc, i) => {
-          acc[i.channel] = (acc[i.channel] ?? 0) + 1; return acc
-        }, {})
-        const goalCounts = monthItems.reduce<Record<string, number>>((acc, i) => {
-          acc[i.goal] = (acc[i.goal] ?? 0) + 1; return acc
-        }, {})
-        const dates = [...new Set(monthItems.map(i => i.date))].sort()
-        const gaps: string[] = []
-        for (let d = 1; d < dates.length; d++) {
-          const diff = (new Date(dates[d]).getTime() - new Date(dates[d - 1]).getTime()) / 86400000
-          if (diff > 5) gaps.push(`${diff} days between ${dates[d - 1]} and ${dates[d]}`)
-        }
-
-        const planSummary = [
-          `Month: ${mk}, Total posts planned: ${monthItems.length}`,
-          `Channel distribution: ${Object.entries(channelCounts).map(([k, v]) => `${k}(${v})`).join(', ')}`,
-          `Goal distribution: ${Object.entries(goalCounts).map(([k, v]) => `${k}(${v})`).join(', ')}`,
-          gaps.length ? `Date gaps > 5 days: ${gaps.join('; ')}` : 'No large date gaps detected',
-          `Brand preferred channels: ${activeCompany?.channels ?? 'not set'}`,
-          `Brand publishing frequency: ${activeCompany?.frequency ?? 'not set'}`,
-        ].join('\n')
-
-        type GapResult = { warnings_fr: string[]; warnings_en: string[] }
-        const result = await callModelJSON<GapResult>(activeCompany?.id ?? '', [
-          {
-            role: 'system',
-            content: `You are an editorial calendar auditor. Analyze this month's content plan and identify real problems. Return JSON exactly: {"warnings_fr":["string"],"warnings_en":["string"]} - each array contains 1 to 3 short warning strings (max 15 words each) in French for warnings_fr and English for warnings_en. Only flag real issues: publishing gaps > 5 days, channel imbalance vs brand preference, goals that are overrepresented or missing. If the plan is good, return {"warnings_fr":[],"warnings_en":[]}. Do not invent problems.`,
-          },
-          { role: 'user', content: planSummary },
-        ], { temperature: 0.2, max_tokens: 300, requiredKeys: ['warnings_fr', 'warnings_en'] })
-
-        if (Array.isArray(result.warnings_fr)) {
-          setGapWarnings({
-            fr: result.warnings_fr.filter((w): w is string => typeof w === 'string').slice(0, 3),
-            en: result.warnings_en.filter((w): w is string => typeof w === 'string').slice(0, 3),
-          })
-        }
-      } catch {
-        // Silently fail - gap analysis is non-critical
-      } finally {
-        setGapLoading(false)
-      }
-    }
-    run()
-  }, [monthItems, mk, apiKeyConfigured]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Grid helpers
-  const itemsByDay = useMemo(() => {
-    const map: Record<number, CalendarItem[]> = {}
-    monthItems.forEach(item => {
-      const d = parseInt(item.date.split('-')[2], 10)
-      if (!map[d]) map[d] = []
-      map[d].push(item)
-    })
-    return map
-  }, [monthItems])
-  const firstDayOfWeek = new Date(year, month, 1).getDay()
-
-  // ─── Chip button ──────────────────────────────────────────────
-  const Chip = ({ active, onClick, children, activeColor }: {
-    active: boolean; onClick: () => void; children: React.ReactNode; activeColor?: string
-  }) => (
-    <button
-      onClick={onClick}
-      className={cn(
-        'px-3.5 py-2 rounded-xl text-sm font-semibold border transition-all whitespace-nowrap',
-        active
-          ? 'text-white border-transparent shadow-sm'
-          : 'text-[var(--color-text-muted)] border-[var(--color-border)] bg-[var(--color-surface-alt)] hover:border-indigo-400 hover:text-[var(--color-text)]'
-      )}
-      style={active ? { backgroundColor: activeColor ?? '#4f46e5', borderColor: activeColor ?? '#4f46e5' } : {}}
-    >
-      {children}
-    </button>
-  )
 
   return (
-    <div className="flex flex-col p-4 sm:p-6 gap-4">
-
-      {/* ── Header ── */}
-      <div className="flex flex-wrap items-center justify-between gap-3 shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
-            <CalendarDays className="w-4 h-4 text-white" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2 mb-0.5">
-              <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
-                {t('calendar.badge')}
-              </span>
-            </div>
-            <h1 className="text-xl font-bold text-[var(--color-text)] font-sans leading-tight">{t('calendar.title')}</h1>
-            <p className="text-xs text-[var(--color-text-muted)]">{t('calendar.subtitle')}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-1 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl p-1">
-          <button onClick={() => setView('list')} className={cn('p-2 rounded-lg transition-colors', view === 'list' ? 'bg-[var(--color-surface)] shadow-sm text-[var(--color-text)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]')}>
-            <LayoutList className="w-4 h-4" />
-          </button>
-          <button onClick={() => setView('grid')} className={cn('p-2 rounded-lg transition-colors', view === 'grid' ? 'bg-[var(--color-surface)] shadow-sm text-[var(--color-text)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]')}>
-            <LayoutGrid className="w-4 h-4" />
-          </button>
+    <Sheet open={open} onClose={onClose} title={c.planTitle} subtitle={<span className="capitalize">{monthName} · {c.planSub}</span>}
+      icon={<span className="fc-proposal__icon"><Spark /></span>} closeLabel={c.cancel}
+      footer={<>
+        {hasMonthItems && <Button variant="ghost" size="sm" icon={<Trash2 />} onClick={onClear} className="text-danger">{c.clearMonth}</Button>}
+        <span className="flex-1" />
+        <Button variant="ghost" onClick={onClose}>{c.cancel}</Button>
+        <Button variant="ai" loading={busy} onClick={() => void generate()} disabled={!channels.length}>{busy ? c.generating : c.generate}</Button>
+      </>}>
+      <SelectField label={c.campaign} value={campaignId} onChange={e => chooseCampaign(e.target.value)}
+        hint={campaign ? `${c.campaignHint}${campaign.start_date || campaign.end_date ? ` (${campaign.start_date || '…'} → ${campaign.end_date || '…'})` : ''}.` : undefined}>
+        <option value="">{c.noCampaign}</option>
+        {campaigns.map(cp => <option key={cp.id} value={cp.id}>{cp.name}</option>)}
+      </SelectField>
+      <div className="fc-field">
+        <span className="fc-label">{c.goals}</span>
+        <div className="flex flex-wrap gap-1.5">
+          {c.goalOptions.map(g => {
+            const on = goals.includes(g)
+            return <Chip key={g} pressed={on} onClick={() => setGoals(list => on ? (list.length > 1 ? list.filter(x => x !== g) : list) : [...list, g])}>{g}</Chip>
+          })}
         </div>
       </div>
-
-      {/* ── Config panel ── */}
-      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5 shrink-0 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-
-          {/* Mois cible */}
-          <div className="space-y-2">
-            <label className="block text-xs font-semibold text-[var(--color-text)]">{t('calendar.targetMonth')}</label>
-            <div className="flex items-center gap-2">
-              <button onClick={prevMonth} className="p-2 rounded-xl border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] text-[var(--color-text-muted)] transition-colors">
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="flex-1 text-center text-sm font-bold text-[var(--color-text)] capitalize px-2 py-2 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl">
-                {monthLabel(year, month, lang)}
-              </span>
-              <button onClick={nextMonth} className="p-2 rounded-xl border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] text-[var(--color-text-muted)] transition-colors">
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Objectif principal -> Objectif(s) */}
-          <div className="space-y-2">
-            <label className="block text-xs font-semibold text-[var(--color-text)]">{t('calendar.primaryGoal')}</label>
-            <div className="flex flex-wrap gap-2">
-              {GOALS[lang].map(g => {
-                const isActive = goals.includes(g)
-                const toggleGoal = () => {
-                  setGoals(prev => 
-                    prev.includes(g) && prev.length > 1 
-                      ? prev.filter(x => x !== g) 
-                      : Array.from(new Set([...prev, g]))
-                  )
-                }
-                return (
-                  <Chip key={g} active={isActive} onClick={toggleGoal} activeColor="#4f46e5">{g}</Chip>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Réseau social */}
-          <div className="space-y-2">
-            <label className="block text-xs font-semibold text-[var(--color-text)]">{t('calendar.socialNetwork')}</label>
-            <div className="flex flex-wrap gap-2">
-              {CHANNELS.map(c => {
-                const Icon = c.icon
-                const isActive = channels.includes(c.value)
-                const toggleChannel = () => {
-                  setChannels(prev => 
-                    prev.includes(c.value) && prev.length > 1 
-                      ? prev.filter(x => x !== c.value) 
-                      : Array.from(new Set([...prev, c.value]))
-                  )
-                }
-                return (
-                  <button
-                    key={c.value}
-                    onClick={toggleChannel}
-                    className={cn(
-                      'inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border transition-all',
-                      isActive
-                        ? 'text-white border-transparent shadow-sm'
-                        : 'text-[var(--color-text-muted)] border-[var(--color-border)] bg-[var(--color-surface-alt)] hover:border-current'
-                    )}
-                    style={isActive ? { backgroundColor: c.color, borderColor: c.color } : { '--tw-ring-color': c.color } as React.CSSProperties}
-                  >
-                    <Icon style={{ fontSize: 13, color: isActive ? 'white' : c.color }} />
-                    {c.label}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Fréquence */}
-          <div className="space-y-2">
-            <label className="block text-xs font-semibold text-[var(--color-text)]">{t('calendar.weeklyFreq')}</label>
-            <div className="flex flex-wrap gap-2">
-              {FREQ_PRESETS.map(f => (
-                <Chip
-                  key={f}
-                  active={!isCustomFreq && freq === f}
-                  onClick={() => { setFreq(f); setIsCustomFreq(false) }}
-                  activeColor="#10b981"
-                >
-                  {f}× / {lang === 'fr' ? 'sem.' : 'wk'}
-                </Chip>
-              ))}
-              {/* Custom frequency */}
-              <button
-                onClick={() => setIsCustomFreq(true)}
-                className={cn(
-                  'px-3.5 py-2 rounded-xl text-sm font-semibold border transition-all',
-                  isCustomFreq
-                    ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
-                    : 'text-[var(--color-text-muted)] border-[var(--color-border)] bg-[var(--color-surface-alt)] hover:border-emerald-400 hover:text-[var(--color-text)]'
-                )}
-              >
-                {lang === 'fr' ? 'Personnalisé' : 'Custom'}
-              </button>
-              {isCustomFreq && (
-                <input
-                  type="number"
-                  min={1} max={14}
-                  value={customFreq}
-                  onChange={e => setCustomFreq(e.target.value)}
-                  placeholder={lang === 'fr' ? 'Ex: 6' : 'E.g. 6'}
-                  className="w-24 px-3 py-2 rounded-xl border border-emerald-400 bg-[var(--color-surface-alt)] text-sm text-[var(--color-text)] outline-none focus:ring-2 focus:ring-emerald-500"
-                  autoFocus
-                />
-              )}
-            </div>
-          </div>
-
-          {/* Campaign */}
-          {campaigns.length > 0 && (
-            <div className="space-y-2 md:col-span-2">
-              <label className="flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text)]">
-                <Megaphone className="w-3.5 h-3.5 text-indigo-500" />{lang === 'fr' ? 'Campagne (optionnel)' : 'Campaign (optional)'}
-              </label>
-              <select value={campaignId} onChange={e => chooseCampaign(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)] text-sm text-[var(--color-text)] outline-none focus:ring-2 focus:ring-indigo-500">
-                <option value="">{lang === 'fr' ? 'Sans campagne (plan du mois complet)' : 'No campaign (full month plan)'}</option>
-                {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              {campaign && (
-                <p className="text-[11px] text-[var(--color-text-muted)]">
-                  {lang === 'fr'
-                    ? 'Les idées suivent la campagne, restent dans ses dates, et sont ajoutées au mois sans effacer les autres posts.'
-                    : "Ideas follow the campaign, stay within its dates, and are added to the month without removing other posts."}
-                </p>
-              )}
-              {campaign && campaignWarnings(campaign, lang === 'fr' ? 'fr' : 'en').map(w => (
-                <p key={w} className="flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400"><AlertCircle className="w-3 h-3" />{w}</p>
-              ))}
-            </div>
-          )}
-
-          {/* Theme of the month */}
-          <div className="space-y-2 md:col-span-2">
-            <label className="block text-xs font-semibold text-[var(--color-text)]">
-              {lang === 'fr' ? 'Thème du mois (Optionnel)' : 'Theme of the month (Optional)'}
-            </label>
-            <input
-              type="text"
-              value={theme}
-              onChange={e => setTheme(e.target.value)}
-              placeholder={lang === 'fr' ? 'Ex: Lancement produit, Halloween, Éducation client...' : 'E.g. Product launch, Halloween, Customer education...'}
-              className="w-full px-4 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)] text-sm text-[var(--color-text)] outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
+      <div className="fc-field">
+        <span className="fc-label">{c.networks}</span>
+        <div className="flex flex-wrap gap-1.5">
+          {CHANNELS.slice(0, 7).map(ch => {
+            const on = channels.includes(ch.value)
+            return <Chip key={ch.value} pressed={on} icon={<ch.icon className="h-3.5 w-3.5" style={{ color: ch.color }} />}
+              onClick={() => setChannels(list => on ? list.filter(x => x !== ch.value) : [...list, ch.value])}>{ch.label}</Chip>
+          })}
         </div>
-
-        {/* Summary + Generate row */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[var(--color-border)]">
-          <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
-            <div className="w-4 h-4 rounded-full border-2 border-indigo-500 flex items-center justify-center shrink-0">
-              <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-            </div>
-            <span>
-              {t('calendar.willGenerate')}{' '}
-              <span className="font-bold text-[var(--color-text)]">{totalPosts}</span>{' '}
-              {t('calendar.postIdeasFor')}{' '}
-              <span className="font-bold text-indigo-500">
-                {channels.map(c => CHANNEL_MAP[c]?.label).join(', ')}
-              </span>
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            {monthItems.length > 0 && (
-              <button onClick={clearMonth} className="flex items-center gap-1.5 px-3 py-2 text-sm text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl border border-rose-200 dark:border-rose-900 transition-colors">
-                <Trash2 className="w-3.5 h-3.5" />
-                {t('calendar.clear')}
-              </button>
-            )}
-            <button
-              onClick={handleGenerate}
-              disabled={loading}
-              className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-indigo-200 dark:shadow-none"
-            >
-              <Sparkles className="w-4 h-4" />
-              {loading ? t('calendar.generating') : t('calendar.generate')}
-            </button>
-          </div>
+      </div>
+      <div className="fc-field">
+        <span className="fc-label">{c.rhythm}</span>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" iconOnly icon={<Minus />} onClick={() => setPerWeek(n => Math.max(1, n - 1))} aria-label="−" />
+          <span className="min-w-8 text-center text-[18px] font-bold text-ink" style={{ fontFamily: 'var(--font-display)' }}>{perWeek}</span>
+          <Button variant="secondary" size="sm" iconOnly icon={<Plus />} onClick={() => setPerWeek(n => Math.min(14, n + 1))} aria-label="+" />
+          <span className="text-sm text-ink-muted">{c.perWeek}</span>
         </div>
+      </div>
+      <TextField label={c.theme} value={theme} placeholder={c.themePlaceholder} onChange={e => setTheme(e.target.value)} />
+      <div className="rounded-[var(--radius-md)] bg-surface-sunken px-3.5 py-3 text-[13px] leading-[19px] text-ink">
+        <strong className="block text-sm">{c.about} {total} {c.ideasFor.split(' ')[0]}</strong>
+        {c.ideasFor.split(' ').slice(1).join(' ')} {networkNames || '—'}, {lang === 'fr' ? `du ${from} au ${to}` : `from the ${from} to the ${to}`}. {c.added}
+      </div>
+      {error && <p className="m-0 text-[13px] text-danger">{error}</p>}
+    </Sheet>
+  )
+}
 
-        {error && (
-          <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-600 dark:text-red-400">
-            <AlertCircle className="w-4 h-4 shrink-0" />{error}
-          </div>
+// ─── Detail (edit or new idea) ────────────────────────────────────────────────
+
+function DetailSheet({ draft, onClose, c, lang, campaigns, canEdit, onSave, onDelete, onWrite, onAdapt }: {
+  draft: Draft | null; onClose: () => void; c: Copy; lang: 'fr' | 'en'
+  campaigns: ReturnType<typeof useCampaignOptions>['campaigns']; canEdit: boolean
+  onSave: (draft: Draft) => Promise<void>; onDelete: (id: string) => Promise<void>; onWrite: (draft: Draft) => void
+  onAdapt: (copy: Draft) => void
+}) {
+  const [form, setForm] = useState<Draft | null>(draft)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  useEffect(() => { setForm(draft); setError('') }, [draft])
+  const set = useCallback(<K extends keyof Draft>(key: K, value: Draft[K]) => setForm(f => f ? { ...f, [key]: value } : f), [])
+  if (!form) return null
+
+  const network = networkOf(form.channel)
+  const campaign = campaigns.find(cp => cp.id === form.campaign_id)
+  const run = async (action: () => Promise<void>) => {
+    setBusy(true)
+    setError('')
+    try { await action() } catch (err) { setError(err instanceof Error ? err.message : String(err)) } finally { setBusy(false) }
+  }
+  const save = () => {
+    if (!form.topic.trim()) { setError(c.needTopic); return }
+    if (!network) { setError(c.needNetwork); return }
+    void run(() => onSave({ ...form, channel: network, topic: form.topic.trim(), goal: form.goal.trim() }))
+  }
+
+  return (
+    <Sheet open onClose={onClose} closeLabel={c.cancel}
+      title={form.id ? (form.topic || '—') : c.newIdeaTitle}
+      subtitle={[FORMAT_MAP[form.format]?.label[lang], CHANNEL_MAP[network]?.label ?? network, campaign?.name].filter(Boolean).join(' · ')}
+      icon={form.id ? <span className="pt-0.5"><DateBlock date={form.date} lang={lang} /></span> : undefined}
+      footer={<>
+        {form.id && canEdit && (
+          <Button variant="ghost" icon={<Trash2 />} className="text-danger" disabled={busy}
+            onClick={() => { if (window.confirm(c.confirmDelete)) void run(() => onDelete(form.id!)) }}>{c.delete}</Button>
         )}
-      </div>
-
-      {/* ── Stats bar ── */}
-      {monthItems.length > 0 && !loading && (
-        <div className="flex items-center gap-3 shrink-0">
-          <span className="text-sm font-semibold text-[var(--color-text)]">{monthItems.length} {t('calendar.ideas')}</span>
-          <span className="text-[var(--color-border)]">·</span>
-          {(['idea', 'scheduled', 'published'] as const).map(s => (
-            <span key={s} className={cn('text-xs px-2 py-0.5 rounded-full font-medium', STATUS_STYLE[s])}>
-              {stats[s]} {STATUS_LABEL[s][lang]}
-            </span>
+        <span className="flex-1" />
+        <Button variant="ghost" onClick={onClose}>{c.cancel}</Button>
+        <Button variant="primary" loading={busy} disabled={!canEdit} onClick={save}>{c.save}</Button>
+      </>}>
+      <div className="fc-field">
+        <span className="fc-label">{lang === 'fr' ? 'Statut' : 'Status'}</span>
+        <div role="radiogroup" className="grid grid-cols-3 gap-1.5">
+          {STATUSES.map(s => (
+            <Chip key={s} pressed={form.status === s} onClick={() => set('status', s)} className="justify-center" disabled={!canEdit}>{c.status[s]}</Chip>
           ))}
         </div>
-      )}
-
-      {/* ── AI gap warning banner ── */}
-      {!gapDismissed && monthItems.length >= 3 && !loading && (gapLoading || (gapWarnings && (lang === 'fr' ? gapWarnings.fr : gapWarnings.en).length > 0)) && (
-        <div className="shrink-0 flex items-start gap-3 px-4 py-3 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
-          <div className="w-6 h-6 rounded-lg bg-amber-500 flex items-center justify-center shrink-0 mt-0.5">
-            {gapLoading
-              ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
-              : <Wand2 className="w-3.5 h-3.5 text-white" />
-            }
+      </div>
+      <TextField label={c.topic} value={form.topic} onChange={e => set('topic', e.target.value)} disabled={!canEdit} autoFocus={!form.id} />
+      <TextField label={c.goal} value={form.goal} onChange={e => set('goal', e.target.value)} disabled={!canEdit} />
+      <div className="grid grid-cols-2 gap-3">
+        <TextField label={c.date} type="date" value={form.date} onChange={e => set('date', e.target.value)} disabled={!canEdit} />
+        <SelectField label={c.campaign} value={form.campaign_id ?? ''} onChange={e => set('campaign_id', e.target.value || null)} disabled={!canEdit}>
+          <option value="">{c.noCampaign}</option>
+          {campaigns.map(cp => <option key={cp.id} value={cp.id}>{cp.name}</option>)}
+        </SelectField>
+      </div>
+      <div className="fc-field">
+        <span className="fc-label">{c.format}</span>
+        <div className="grid grid-cols-4 gap-1.5">
+          {FORMATS.map(f => (
+            <Chip key={f.value} pressed={form.format === f.value} icon={<f.icon className="h-3.5 w-3.5" />} onClick={() => set('format', f.value)}
+              className="justify-center" disabled={!canEdit}>{f.label[lang]}</Chip>
+          ))}
+        </div>
+      </div>
+      <div className="fc-field">
+        <span className="fc-label">{c.network}</span>
+        <div role="radiogroup" className="flex flex-wrap gap-1.5">
+          {CHANNELS.slice(0, 7).map(ch => (
+            <Chip key={ch.value} pressed={network === ch.value} icon={<ch.icon className="h-3.5 w-3.5" style={{ color: ch.color }} />} disabled={!canEdit}
+              onClick={() => set('channel', ch.value)}>{ch.label}</Chip>
+          ))}
+        </div>
+        <span className="fc-hint">{c.networksHint}</span>
+      </div>
+      {form.id && canEdit && (
+        <div className="fc-field">
+          <span className="fc-label">{c.adapt}</span>
+          <div className="flex flex-wrap gap-1.5">
+            {CHANNELS.slice(0, 7).filter(ch => ch.value !== network).map(ch => (
+              <Chip key={ch.value} icon={<ch.icon className="h-3.5 w-3.5" style={{ color: ch.color }} />}
+                onClick={() => onAdapt({
+                  date: form.date, topic: form.topic, goal: form.goal, campaign_id: form.campaign_id, status: 'idea',
+                  channel: ch.value, format: suggestedFormat(ch.value, form.format),
+                })}>{ch.label}</Chip>
+            ))}
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 mb-1">
-              {lang === 'fr' ? 'Analyse IA du calendrier' : 'AI calendar check'}
-            </p>
-            {gapLoading && (
-              <p className="text-xs text-[var(--color-text-muted)]">
-                {lang === 'fr' ? 'Analyse du plan en cours…' : 'Checking your plan…'}
-              </p>
-            )}
-            {!gapLoading && gapWarnings && (lang === 'fr' ? gapWarnings.fr : gapWarnings.en).length > 0 && (
-              <ul className="space-y-1">
-                {(lang === 'fr' ? gapWarnings.fr : gapWarnings.en).map((w, i) => (
-                  <li key={i} className="flex items-start gap-1.5 text-xs text-amber-800 dark:text-amber-300">
-                    <span className="shrink-0 mt-0.5">⚠</span>
-                    <span>{w}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          {!gapLoading && gapWarnings && (lang === 'fr' ? gapWarnings.fr : gapWarnings.en).length > 0 && (
-            <button
-              onClick={() => setGapDismissed(true)}
-              className="shrink-0 text-amber-500 hover:text-amber-700 transition-colors"
-              title={lang === 'fr' ? 'Fermer' : 'Dismiss'}
-            >
-              <span className="text-sm leading-none">✕</span>
-            </button>
-          )}
+          <span className="fc-hint">{c.adaptHint}</span>
         </div>
       )}
-
-      {/* ── Content area ── */}
-      <div className="pb-4">
-
-        {/* Skeleton while loading */}
-        {(loading || loadingItems) && <SkeletonTable count={totalPosts > 10 ? 10 : totalPosts} lang={lang} />}
-
-        {/* Empty state */}
-        {!loading && monthItems.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-center p-8">
-            <div className="w-16 h-16 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-center mb-4">
-              <CalendarDays className="w-7 h-7 text-[var(--color-text-muted)]" />
-            </div>
-            <p className="text-sm font-semibold text-[var(--color-text)] mb-1">
-              {lang === 'fr' ? 'Aucun calendrier généré' : 'No calendar generated'}
-            </p>
-            <p className="text-xs text-[var(--color-text-muted)] max-w-xs">{t('calendar.noCalendar')}</p>
-          </div>
-        )}
-
-        {/* LIST VIEW */}
-        {!loading && monthItems.length > 0 && view === 'list' && (
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-[var(--color-border)] bg-[var(--color-surface-alt)]">
-                  {[t('calendar.colDate'), t('calendar.colTopic'), t('calendar.colGoal'), t('calendar.colFormat'), t('calendar.colAction')].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {[...monthItems].sort((a, b) => a.date.localeCompare(b.date)).map((item, idx) => {
-                  const FmtIcon = FORMAT_ICON[item.format] ?? FileText
-                  const meta    = CHANNEL_MAP[item.channel]
-                  const Icon    = meta?.icon
-                  return (
-                    <tr key={item.id} className={cn('border-b border-[var(--color-border)] group hover:bg-[var(--color-surface-alt)] transition-colors', idx % 2 === 0 ? '' : 'bg-[var(--color-surface-alt)]/30')}>
-                      {/* Date */}
-                      <td className="px-4 py-3 shrink-0">
-                        <p className="text-[10px] font-bold text-indigo-500 uppercase">
-                          {new Date(`${item.date}T12:00:00`).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', { month: 'short' })}
-                        </p>
-                        <p className="text-lg font-bold text-[var(--color-text)] leading-none">
-                          {item.date.split('-')[2]}
-                        </p>
-                      </td>
-                      {/* Topic */}
-                      <td className="px-4 py-3">
-                        <p className="font-semibold text-sm text-[var(--color-text)] leading-snug">{item.topic}</p>
-                        {Icon && (
-                          <span className="inline-flex items-center gap-1 mt-0.5">
-                            <Icon style={{ color: meta.color, fontSize: 11 }} />
-                            <span className="text-[11px] text-[var(--color-text-muted)]">{meta.label}</span>
-                          </span>
-                        )}
-                      </td>
-                      {/* Goal */}
-                      <td className="px-4 py-3">
-                        <div className="relative inline-block w-full max-w-[200px]">
-                          <select 
-                            value={item.goal} 
-                            onChange={e => updateItem(item.id, 'goal', e.target.value)}
-                            className="w-full appearance-none bg-[var(--color-surface-alt)] border border-[var(--color-border)] hover:border-indigo-400 rounded-lg px-3 py-1.5 text-xs text-[var(--color-text)] cursor-pointer pr-7 outline-none transition-colors shadow-xs font-medium"
-                          >
-                            <option value={item.goal} className="bg-[var(--color-surface)] text-[var(--color-text)] py-1 font-medium" style={{ color: 'var(--color-text)', backgroundColor: 'var(--color-surface)' }}>{item.goal}</option>
-                            {GOALS[lang].filter(g => g !== item.goal).map(g => (
-                              <option key={g} value={g} className="bg-[var(--color-surface)] text-[var(--color-text)] py-1 font-medium" style={{ color: 'var(--color-text)', backgroundColor: 'var(--color-surface)' }}>{g}</option>
-                            ))}
-                          </select>
-                          <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[var(--color-text-muted)]">
-                            <ChevronDown className="w-3.5 h-3.5" />
-                          </div>
-                        </div>
-                      </td>
-                      {/* Format */}
-                      <td className="px-4 py-3">
-                        <div className="relative inline-block">
-                          <select 
-                            value={item.format} 
-                            onChange={e => updateItem(item.id, 'format', e.target.value)}
-                            className={cn(
-                              'appearance-none pl-7 pr-7 py-1.5 text-xs font-semibold rounded-lg border cursor-pointer outline-none transition-colors shadow-xs',
-                              FORMAT_STYLE[item.format] || 'bg-gray-50 text-gray-700 border-gray-200'
-                            )}
-                          >
-                            {['Post', 'Carousel', 'Video', 'Story'].map(f => (
-                              <option 
-                                key={f} 
-                                value={f} 
-                                className="bg-[var(--color-surface)] text-[var(--color-text)] font-normal py-1"
-                                style={{ color: 'var(--color-text)', backgroundColor: 'var(--color-surface)' }}
-                              >
-                                {f}
-                              </option>
-                            ))}
-                          </select>
-                          <div className="pointer-events-none absolute inset-y-0 left-2 flex items-center" style={{ color: 'inherit' }}>
-                            <FmtIcon className="w-3.5 h-3.5" />
-                          </div>
-                          <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center" style={{ color: 'inherit' }}>
-                            <ChevronDown className="w-3.5 h-3.5" />
-                          </div>
-                        </div>
-                      </td>
-                      {/* Actions */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => cycleStatus(item.id)}
-                            className={cn('text-[11px] px-2 py-1 rounded-full font-semibold transition-colors cursor-pointer hover:opacity-80', STATUS_STYLE[item.status])}
-                          >
-                            {STATUS_LABEL[item.status][lang]}
-                          </button>
-                          <button
-                            onClick={() => goGenerate(item)}
-                            className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors"
-                          >
-                            <Zap className="w-3 h-3" />
-                            {lang === 'fr' ? 'Générer' : 'Generate'}
-                          </button>
-                          <button onClick={() => removeItem(item.id)} className="p-1 rounded-lg text-[var(--color-text-muted)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 opacity-0 group-hover:opacity-100 transition-all">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* GRID VIEW */}
-        {!loading && monthItems.length > 0 && view === 'grid' && (
-          <div className="pb-4">
-            <div className="grid grid-cols-7 gap-1 mb-1">
-              {(lang === 'fr'
-                ? ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
-                : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-              ).map(d => (
-                <div key={d} className="text-center text-[10px] font-bold text-[var(--color-text-muted)] uppercase py-1">{d}</div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 gap-1">
-              {Array.from({ length: (firstDayOfWeek + 6) % 7 }).map((_, i) => <div key={`e-${i}`} className="min-h-[72px] rounded-lg" />)}
-              {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
-                const dayItems = itemsByDay[day] ?? []
-                const isToday  = isoDate(year, month, day) === new Date().toISOString().slice(0, 10)
-                return (
-                  <div key={day} className={cn('min-h-[72px] rounded-xl border p-1.5 transition-colors', isToday ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-950/20' : 'border-[var(--color-border)] bg-[var(--color-surface)]')}>
-                    <div className="flex justify-between items-start mb-1.5">
-                      <p className={cn('text-xs font-bold', isToday ? 'text-indigo-600 dark:text-indigo-400 font-extrabold' : 'text-[var(--color-text-muted)]')}>{day}</p>
-                      <div className="flex items-center gap-1.5">
-                        {Array.from(new Set(dayItems.map(i => i.channel))).map(ch => {
-                          const CIcon = CHANNEL_MAP[ch]?.icon
-                          if (!CIcon) return null
-                          return <CIcon key={ch} style={{ color: CHANNEL_MAP[ch]?.color, fontSize: 13 }} title={CHANNEL_MAP[ch]?.label} />
-                        })}
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      {dayItems.slice(0, 2).map(item => {
-                        const FmtIcon = FORMAT_ICON[item.format] ?? FileText
-                        return (
-                          <button
-                            key={item.id}
-                            onClick={() => goGenerate(item)}
-                            title={item.topic}
-                            className={cn(
-                              'w-full text-left rounded-lg px-2 py-1.5 text-[11px] font-medium leading-tight hover:opacity-90 flex items-center gap-1.5 border transition-colors shadow-xs',
-                              FORMAT_STYLE[item.format] || 'bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-400 border-gray-200 dark:border-gray-800'
-                            )}
-                          >
-                            <FmtIcon className="shrink-0 w-3.5 h-3.5" />
-                            <span className="truncate flex-1">{item.topic}</span>
-                          </button>
-                        )
-                      })}
-                      {dayItems.length > 2 && <p className="text-[10px] text-[var(--color-text-muted)] pl-1">+{dayItems.length - 2}</p>}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+      {form.status === 'idea' && form.topic.trim() && (
+        <InsightCard kind={c.notWritten} title={c.notWrittenText}
+          action={<Button variant="ai" size="sm" onClick={() => onWrite(form)}>{c.write}</Button>} />
+      )}
+      {error && <p className="m-0 text-[13px] text-danger">{error}</p>}
+    </Sheet>
   )
 }

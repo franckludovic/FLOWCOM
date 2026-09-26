@@ -2,11 +2,11 @@
 // fc-* classes (src/styles/fc.css). Pages build from these instead of styling
 // buttons, cards and badges themselves.
 import {
-  forwardRef, useId,
+  forwardRef, useEffect, useId,
   type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactNode,
   type SelectHTMLAttributes, type TextareaHTMLAttributes,
 } from 'react'
-import { ArrowDownRight, ArrowUpRight, Database, Loader2 } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, Database, Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ─── Spark: the AI's mark ─────────────────────────────────────────────────────
@@ -249,5 +249,45 @@ export function ApprovalCardFrame({ icon, title, status, children, actions, resu
       {children && <div className="fc-proposal__items">{children}</div>}
       {actions ? <footer className="fc-proposal__actions">{actions}</footer> : result ? <p className="px-4 pb-4 text-sm text-ink-muted">{result}</p> : null}
     </article>
+  )
+}
+
+// ─── Sheet: a side panel over the page (full screen on phones) ───────────────
+
+export function Sheet({ open, onClose, title, subtitle, icon, children, footer, closeLabel = 'Fermer' }: {
+  open: boolean
+  onClose: () => void
+  title: ReactNode
+  subtitle?: ReactNode
+  icon?: ReactNode
+  children: ReactNode
+  footer?: ReactNode
+  closeLabel?: string
+}) {
+  const titleId = useId()
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-black/45" onClick={onClose} aria-hidden="true" />
+      <aside role="dialog" aria-modal="true" aria-labelledby={titleId}
+        className="absolute inset-y-0 right-0 flex w-full max-w-[440px] flex-col bg-surface-overlay shadow-[var(--shadow-lg)]">
+        <div className="flex items-start gap-3 border-b border-line px-5 py-4">
+          {icon}
+          <div className="min-w-0 flex-1">
+            <h2 id={titleId} className="m-0 text-[18px] font-bold leading-6 text-ink" style={{ fontFamily: 'var(--font-display)' }}>{title}</h2>
+            {subtitle && <p className="m-0 mt-0.5 text-[13px] text-ink-muted">{subtitle}</p>}
+          </div>
+          <Button variant="ghost" size="sm" iconOnly icon={<X />} onClick={onClose} aria-label={closeLabel} />
+        </div>
+        <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-5">{children}</div>
+        {footer && <div className="flex items-center gap-2 border-t border-line bg-surface-sunken px-5 py-3">{footer}</div>}
+      </aside>
+    </div>
   )
 }

@@ -192,7 +192,7 @@ function calendarItemFromRow(row: Fc_calendaritems): DataverseCalendarItem {
   const format = row.fc_formatname?.toLowerCase()
   return {
     id: row.fc_calendaritemid,
-    date: row.fc_postdate ?? '',
+    date: String(row.fc_postdate ?? '').slice(0, 10),
     topic: row.fc_topic ?? '',
     goal: row.fc_goal ?? '',
     format: (format === 'carousel' ? 'Carousel' : format === 'video' ? 'Video' : format === 'story' ? 'Story' : 'Post'),
