@@ -33,17 +33,17 @@ export default function App() {
     <ErrorBoundary>
       <ThemeProvider>
       <I18nProvider>
-        <AppSettingsProvider>
-          <BrowserRouter>
-            <AuthProvider>
+        <BrowserRouter>
+          <AuthProvider>
+            <AppSettingsProvider>
               <CompanyProvider>
                 <BufferProvider>
                   <AppRoutes />
                 </BufferProvider>
               </CompanyProvider>
-            </AuthProvider>
-          </BrowserRouter>
-        </AppSettingsProvider>
+            </AppSettingsProvider>
+          </AuthProvider>
+        </BrowserRouter>
       </I18nProvider>
     </ThemeProvider>
     </ErrorBoundary>

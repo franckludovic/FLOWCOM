@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useState, useEffect, type ReactNode } from 'react'
 import type { Theme } from '@/types'
 import { normalizeTheme, themeCss } from '@/theme/derive'
 import type { ThemeSettings } from '@/theme/tokens'
@@ -65,7 +65,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setTheme = (t: Theme) => setThemeState(t)
   const toggle = () => setThemeState(t => t === 'light' ? 'dark' : 'light')
-  const setSettings = (next: Partial<ThemeSettings>) => setSettingsState(prev => normalizeTheme({ ...prev, ...next }))
+  const setSettings = useCallback((next: Partial<ThemeSettings>) => setSettingsState(prev => normalizeTheme({ ...prev, ...next })), [])
 
   return (
     <ThemeContext.Provider value={{ theme, toggle, setTheme, settings, setSettings }}>

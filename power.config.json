@@ -160,6 +160,11 @@
           "entitySetName": "fc_zoneplaces",
           "logicalName": "fc_zoneplace",
           "isHidden": false
+        },
+        "appsettings": {
+          "entitySetName": "fc_appsettings",
+          "logicalName": "fc_appsetting",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

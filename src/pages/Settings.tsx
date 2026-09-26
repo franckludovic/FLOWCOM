@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Brain, Check, ExternalLink, Loader2, Send, ShieldCheck } from 'lucide-react'
 import { useI18n } from '@/contexts/I18nContext'
 import { useAuth } from '@/contexts/AuthContext'
@@ -10,6 +11,9 @@ import {
 } from '@/lib/integrations'
 import { saveBufferToken } from '@/lib/buffer'
 import { cn } from '@/lib/utils'
+import { Tabs } from '@/components/ui'
+import { AppearanceSettings } from './settings/AppearanceSettings'
+import { ModulesSettings } from './settings/ModulesSettings'
 
 type IntegrationStatus = 'connected' | 'notConnected' | 'checking'
 
@@ -37,8 +41,13 @@ const statusLabels = {
 
 const inputClass = 'px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-alt)] text-[var(--color-text)] text-sm outline-none focus:ring-2 focus:ring-indigo-500'
 
+type SettingsTab = 'integrations' | 'appearance' | 'modules'
+
 export default function SettingsPage() {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
+  const fr = lang === 'fr'
+  const [params, setParams] = useSearchParams()
+  const tab: SettingsTab = params.get('tab') === 'appearance' || params.get('tab') === 'modules' ? params.get('tab') as SettingsTab : 'integrations'
   const { apiKeyConfigured, updateApiKey } = useAuth()
   const { activeCompany } = useCompany()
   const buffer = useBuffer()
@@ -61,17 +70,25 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-[var(--color-bg)]">
-      <div className="max-w-3xl px-6 py-5 space-y-4">
+    <div className="h-full overflow-y-auto bg-surface-page">
+      <div className="mx-auto max-w-[var(--content-max)] px-4 py-5 sm:px-6 space-y-4">
         <div>
-          <h1 className="text-xl font-bold text-[var(--color-text)]">{t('settings.title')}</h1>
-          <p className="text-sm text-[var(--color-text-muted)]">
-            {t('settings.subtitle')}
-            {activeCompany && <span className="font-medium text-[var(--color-text)]"> {activeCompany.name}</span>}
+          <h1 className="text-[24px] leading-[30px] font-bold text-ink">{fr ? 'Paramètres' : 'Settings'}</h1>
+          <p className="text-sm text-ink-muted">
+            {tab === 'integrations' ? <>{t('settings.subtitle')}{activeCompany && <span className="font-medium text-ink"> {activeCompany.name}</span>}</>
+              : fr ? "Réglages de toute l'installation." : 'Settings for the whole installation.'}
           </p>
         </div>
 
-        {!activeCompany ? (
+        <Tabs<SettingsTab> value={tab} onChange={next => setParams(next === 'integrations' ? {} : { tab: next })} tabs={[
+          { id: 'integrations', label: fr ? 'Intégrations' : 'Integrations' },
+          { id: 'appearance', label: fr ? 'Apparence' : 'Appearance' },
+          { id: 'modules', label: 'Modules' },
+        ]} />
+
+        {tab === 'appearance' ? <AppearanceSettings canManage={canManage} />
+        : tab === 'modules' ? <ModulesSettings canManage={canManage} />
+        : !activeCompany ? (
           <p className="text-sm text-[var(--color-text-muted)]">{t('settings.noCompany')}</p>
         ) : (
           <>

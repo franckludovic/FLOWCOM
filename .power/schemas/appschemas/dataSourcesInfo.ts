@@ -66,6 +66,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "fc_appsettings": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "fc_appsettingid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "fc_audiencesegments": {
     "tableId": "",
     "version": "",
